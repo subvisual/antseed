@@ -1,5 +1,10 @@
 import type { PeerInfo } from '@antseed/node'
 
+// MIRROR: the per-priority comparator here (sortPeersByPriority / computeTrustScore)
+// MUST stay in sync with apps/desktop/src/renderer/core/forecast.ts
+// (function pickWinnerByPriority / computeRowTrustScore). If you change one,
+// change the other. See forecast.test.ts cross-check tests for the behavioural spec.
+
 /**
  * Routing priority a buyer can attach to a chat session.
  *

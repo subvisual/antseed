@@ -10,6 +10,16 @@
  * (Node.js side). The comparators below are a renderer-side mirror of the CLI
  * logic. A cross-check test in forecast.test.ts verifies they agree on a
  * shared fixture to catch any divergence.
+ *
+ * MIRROR: the per-priority comparator here MUST stay in sync with
+ * apps/cli/src/proxy/routing-priority.ts (function sortPeersByPriority /
+ * computeTrustScore). If you change one, change the other. See the cross-check
+ * tests in forecast.test.ts for the behavioural spec.
+ *
+ * NOTE: the cross-check tests in forecast.test.ts cannot be executed by the
+ * current infrastructure (renderer tests are not compiled by tsconfig.main.json
+ * and not run by `pnpm test`). They serve as a documented behavioural spec and
+ * are checked at code-review time. See the comment header in forecast.test.ts.
  */
 
 import type { DiscoverRow } from './state.js';
