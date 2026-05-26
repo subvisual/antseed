@@ -26,6 +26,15 @@ import {
   type RoutingPriority,
 } from './chat-routing-priority.js';
 import {
+  clearStickyState,
+  deleteChatStickyState,
+  getSkipSet,
+  getStickyPeer,
+  markPeerFailed,
+  markPeerSuccess,
+  setStickyPeer,
+} from './chat-sticky-peer.js';
+import {
   buildAttachmentPromptText,
   extractAttachmentImages,
   prepareChatAttachments,
@@ -2083,15 +2092,28 @@ export function registerPiChatHandlers({
     const sessionRoutingPriority = resolveLatestRoutingPriority(
       sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>,
     );
-    let preferredPeerId = peerOverrideId ?? preferredPeerByConversationId.get(conversationId) ?? persistedPeer?.peerId ?? null;
-    // When no peer is pinned yet, use the routing priority to pick the
-    // highest-ranked peer from the current service catalog. This is the
-    // key wiring: changing the chip re-routes the very next prompt because
-    // this path runs on every request before the peer is locked in.
+    // Resolve the preferred peer.
+    // Priority: explicit override > in-memory sticky (if not skip-listed) > persisted.
+    const stickyPeer = peerOverrideId ? null : getStickyPeer(conversationId);
+    const skipSet = getSkipSet(conversationId);
+    const memPeer = preferredPeerByConversationId.get(conversationId);
+    const memPeerEffective = memPeer && !skipSet.has(memPeer) ? memPeer : null;
+    let preferredPeerId = peerOverrideId ?? stickyPeer ?? memPeerEffective ?? persistedPeer?.peerId ?? null;
+    // If the persisted peer is skip-listed from a prior failure this process run,
+    // discard it so re-selection triggers below.
+    if (preferredPeerId && skipSet.has(preferredPeerId) && !peerOverrideId) {
+      preferredPeerId = null;
+    }
+    // When no peer is pinned (or the sticky one was skipped), use the routing
+    // priority to pick the highest-ranked non-failed peer from the service
+    // catalog. This is the key wiring: changing the chip re-routes the very
+    // next prompt because this path runs on every request before the peer is
+    // locked in.
     if (!preferredPeerId && serviceId) {
       const normalizedSvc = serviceId.trim().toLowerCase();
       const entriesForService = lastServiceCatalogEntries.filter(
-        (entry) => entry.id.trim().toLowerCase() === normalizedSvc,
+        (entry) => entry.id.trim().toLowerCase() === normalizedSvc
+          && (!entry.peerId || !skipSet.has(entry.peerId)),
       );
       if (entriesForService.length > 0) {
         const buyerStatePeers = await loadBuyerStateDiscoveredPeers();
@@ -2100,6 +2122,8 @@ export function registerPiChatHandlers({
     }
     if (preferredPeerId) {
       preferredPeerByConversationId.set(conversationId, preferredPeerId);
+      // Record the sticky peer so subsequent requests reuse it directly.
+      setStickyPeer(conversationId, preferredPeerId);
       if (peerOverrideId && persistedPeer?.peerId !== peerOverrideId) {
         const peerLabel = lastServiceCatalogEntries.find((entry) => entry.peerId === peerOverrideId)?.peerLabel;
         void store.setPeer(conversationId, peerOverrideId, peerLabel);
@@ -2508,6 +2532,11 @@ export function registerPiChatHandlers({
     const run: ActiveRun = { conversationId, session, unsubscribe };
     activeRunsByConversation.set(conversationId, run);
 
+    // Capture the peer we're routing to so we can update sticky state after
+    // the request completes (whether it succeeds, degrades, or errors).
+    const requestPeerId = preferredPeerId;
+    const requestStartMs = Date.now();
+
     try {
       const promptText = [trimmedMessage, attachmentPromptText].filter((part) => part.length > 0).join('\n\n');
       await session.prompt(promptText || ' ', { images: effectiveAttachmentImages.length > 0 ? effectiveAttachmentImages : undefined });
@@ -2518,6 +2547,11 @@ export function registerPiChatHandlers({
         // `never` here. Cast back to the real type (we already guarded on
         // `!== null` above).
         const streamFailure = terminalStreamFailure as ChatStreamStopReason;
+        // Mark the peer as failed so the next request re-selects.
+        if (requestPeerId && streamFailure.kind !== 'payment_required') {
+          markPeerFailed(conversationId, requestPeerId);
+          preferredPeerByConversationId.delete(conversationId);
+        }
         emitChatStreamError({
           conversationId,
           error: terminalStreamError ?? streamFailure.message,
@@ -2568,6 +2602,21 @@ export function registerPiChatHandlers({
         sendToRenderer('chat:ai-stream-done', { conversationId });
       }
 
+      // Update sticky-peer latency baseline. If the peer degraded (latency
+      // >= 2× rolling average), markPeerSuccess returns true and internally
+      // marks the peer failed — the next request will re-select.
+      if (requestPeerId) {
+        const elapsedMs = Date.now() - requestStartMs;
+        const degraded = markPeerSuccess(conversationId, requestPeerId, elapsedMs);
+        if (degraded) {
+          preferredPeerByConversationId.delete(conversationId);
+          appendSystemLog(
+            `Sticky peer ${requestPeerId.slice(0, 8)}… degraded `
+            + `(${String(elapsedMs)} ms ≥ 2× baseline). Re-selecting on next request.`,
+          );
+        }
+      }
+
       if (shouldGenerateConversationTitle) {
         try {
           let title = await generateConversationTitleWithModel({
@@ -2604,6 +2653,13 @@ export function registerPiChatHandlers({
         return { ok: false, error: 'Aborted', stopReason: reason };
       }
       const message = asErrorMessage(error);
+      // Mark the peer as failed for non-payment errors so the next request
+      // re-selects a different peer under the active routing priority.
+      const isPaymentErrorForFailed = /insufficient.*balance|escrow.*balance|402.*payment/i.test(message);
+      if (requestPeerId && !isPaymentErrorForFailed) {
+        markPeerFailed(conversationId, requestPeerId);
+        preferredPeerByConversationId.delete(conversationId);
+      }
       // Map insufficient balance / 402 errors to payment_required format
       // so the renderer shows the Add Credits card
       const isPaymentError = /insufficient.*balance|escrow.*balance|402.*payment/i.test(message);
@@ -2909,6 +2965,7 @@ export function registerPiChatHandlers({
   ipcMain.handle('chat:ai-delete-conversation', async (_event, id: string) => {
     preferredPeerByConversationId.delete(id);
     cachedPaymentRequired.delete(id);
+    deleteChatStickyState(id);
     await store.delete(id);
     // Best effort: wipe any raw attachment bytes we persisted for this
     // conversation. Failures are swallowed so a stuck directory doesn't
@@ -3046,6 +3103,10 @@ export function registerPiChatHandlers({
         return { ok: false, error: `Unknown routing priority: ${String(priority)}` };
       }
       await store.setRoutingPriority(conversationId, priority);
+      // Changing the priority chip clears the sticky peer so the very next
+      // prompt picks a fresh peer under the new priority.
+      clearStickyState(conversationId);
+      preferredPeerByConversationId.delete(conversationId);
       return { ok: true };
     },
   );
