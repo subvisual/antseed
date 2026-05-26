@@ -264,6 +264,12 @@ export type RendererUiState = {
   chatRoutingPriorityIsUnset: boolean;
   /** True once the buyer has dismissed the one-time routing-priority tooltip. */
   chatRoutingTooltipDismissed: boolean;
+  /** True once the buyer has dismissed the onboarding banner. */
+  onboardingBannerDismissed: boolean;
+  /** Category keys the buyer selected in the onboarding banner. */
+  onboardingSelectedCategories: string[];
+  /** True once the initial load of onboarding prefs has completed. */
+  onboardingPrefsLoaded: boolean;
   chatServiceStatus: BadgeState;
   chatProxyStatus: BadgeState;
   chatDeleteVisible: boolean;
@@ -410,6 +416,9 @@ export function createInitialUiState(): RendererUiState {
     chatRoutingPriority: 'most-trusted',
     chatRoutingPriorityIsUnset: false,
     chatRoutingTooltipDismissed: false,
+    onboardingBannerDismissed: false,
+    onboardingSelectedCategories: [],
+    onboardingPrefsLoaded: false,
     chatServiceStatus: { tone: 'idle', label: 'Services idle' },
     chatProxyStatus: { tone: 'idle', label: 'Proxy offline' },
     chatDeleteVisible: false,

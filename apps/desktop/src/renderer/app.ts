@@ -451,6 +451,9 @@ registerActions({
   clearPinnedPeer: chatApi.clearPinnedPeer,
   setRoutingPriority: chatApi.setRoutingPriority,
   dismissRoutingTooltip: chatApi.dismissRoutingTooltip,
+  dismissOnboardingBanner: chatApi.dismissOnboardingBanner,
+  reopenOnboardingBanner: chatApi.reopenOnboardingBanner,
+  setOnboardingCategories: chatApi.setOnboardingCategories,
   rejectPaymentSession: () => {
     uiState.chatPaymentApprovalVisible = false;
     uiState.chatPaymentApprovalPeerId = null;

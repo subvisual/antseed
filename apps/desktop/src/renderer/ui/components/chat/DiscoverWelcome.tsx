@@ -6,6 +6,7 @@ import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import type { ChatServiceOptionEntry, DiscoverRow } from '../../../core/state';
 import { useUiSnapshot } from '../../hooks/useUiSnapshot';
+import { useActions } from '../../hooks/useActions';
 import { useDiscoverFilters } from '../../hooks/useDiscoverFilters';
 import {
   type DiscoverSortKey,
@@ -20,6 +21,7 @@ import { getKnownProxy, type KnownProxy } from '../../../core/known-proxies';
 import { InfoTooltip } from '../InfoTooltip';
 import { groupByCanonical, canonicalizeModelId } from '../../../core/canonical-model';
 import { computeForecast, type RoutingPriority } from '../../../core/forecast';
+import { CATEGORIES, matchesCategory, type Category } from '../../../core/categories';
 import styles from './DiscoverWelcome.module.scss';
 
 /**
@@ -406,11 +408,17 @@ function buildPaginationTokens(page: number, totalPages: number): PaginationToke
 
 export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWelcomeProps) {
   const snap = useUiSnapshot();
+  const actions = useActions();
   const rows = snap.discoverRows;
   // When the routing priority is unset, default to 'most-trusted' for forecast computation.
   const routingPriority: RoutingPriority = snap.chatRoutingPriorityIsUnset
     ? 'most-trusted'
     : snap.chatRoutingPriority;
+
+  // Onboarding prefs from persisted buyer state.
+  const bannerDismissed = snap.onboardingBannerDismissed;
+  const prefsLoaded = snap.onboardingPrefsLoaded;
+  const selectedCategoryKeys = snap.onboardingSelectedCategories;
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => estimatePageSize());
@@ -475,6 +483,15 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
     filterState.minReputationScore !== DEFAULT_MIN_REPUTATION_SCORE;
 
   const hasNetworkData = serviceOptions.length > 0 || rows.length > 0;
+
+  // All cards (unfiltered by search/drawer filters) — used for Recommended section.
+  const allCards = useMemo(() => {
+    if (rows.length > 0) {
+      return buildCardsFromRows(rows, routingPriority);
+    }
+    return serviceOptions.length > 0 ? buildCards(serviceOptions) : [];
+  }, [rows, serviceOptions, routingPriority]);
+
   const cards = useMemo(() => {
     if (rows.length > 0) {
       return buildCardsFromRows(filterState.sortedRows, routingPriority);
@@ -486,6 +503,25 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
     () => cards.filter((c) => matchesSearch(c, filterState.search)),
     [cards, filterState.search],
   );
+
+  // Recommended cards: cards whose groupedRows contain at least one row
+  // matching any of the user's selected category keys.
+  const selectedCategories = useMemo(
+    () => CATEGORIES.filter((cat) => selectedCategoryKeys.includes(cat.key)),
+    [selectedCategoryKeys],
+  );
+
+  const recommendedCards = useMemo(() => {
+    if (selectedCategories.length === 0) return [];
+    return allCards.filter((card) =>
+      selectedCategories.some((cat) =>
+        card.groupedRows.length > 0
+          ? card.groupedRows.some((r) => matchesCategory(cat, r))
+          // fallback for cards built from serviceOptions (no groupedRows)
+          : cat.tagMatchers.some((tag) => card.tags.includes(tag)),
+      ),
+    );
+  }, [allCards, selectedCategories]);
 
   useEffect(() => { setPage(1); }, [
     filterState.search,
@@ -527,6 +563,20 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
               Everything is anonymous — no account required.
             </p>
           </div>
+
+          {/* ── Onboarding banner ────────────────────────────────────── */}
+          {prefsLoaded && !bannerDismissed && (
+            <OnboardingBanner
+              selectedKeys={selectedCategoryKeys}
+              onToggle={(key) => {
+                const next = selectedCategoryKeys.includes(key)
+                  ? selectedCategoryKeys.filter((k) => k !== key)
+                  : [...selectedCategoryKeys, key];
+                actions.setOnboardingCategories(next);
+              }}
+              onDismiss={() => actions.dismissOnboardingBanner()}
+            />
+          )}
 
           <div className={styles.controlsRow}>
             <div className={styles.searchBox}>
@@ -580,6 +630,18 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
             <div className={styles.loadingHint}>
               Connecting to network...
             </div>
+          )}
+
+          {/* ── Recommended section ──────────────────────────────────── */}
+          {selectedCategories.length > 0 && hasNetworkData && (
+            <RecommendedSection
+              cards={recommendedCards}
+              selectedCategories={selectedCategories}
+              priority={routingPriority}
+              onCardClick={handleClick}
+              onOpenStats={openStatsDrawer}
+              columnsStyle={Math.max(1, Math.ceil(Math.sqrt(pageSize)))}
+            />
           )}
 
           <div className={styles.resultsArea}>
@@ -640,6 +702,20 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
           </div>
           <div className={styles.drawerBody}>
             <DiscoverFilters filters={filterState} />
+            {bannerDismissed && (
+              <div className={styles.drawerReopenSection}>
+                <button
+                  type="button"
+                  className={styles.drawerReopenBtn}
+                  onClick={() => {
+                    actions.reopenOnboardingBanner();
+                    closeDrawer();
+                  }}
+                >
+                  Show category recommendations
+                </button>
+              </div>
+            )}
           </div>
         </aside>
       )}
@@ -1111,5 +1187,103 @@ function StatsDrawer({
         </div>
       </aside>
     </>
+  );
+}
+
+/* ── Onboarding Banner ────────────────────────────────────────────────── */
+
+function OnboardingBanner({
+  selectedKeys,
+  onToggle,
+  onDismiss,
+}: {
+  selectedKeys: string[];
+  onToggle: (key: string) => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <section className={styles.onboardingBanner} aria-label="Category recommendations setup">
+      <div className={styles.onboardingBannerContent}>
+        <h2 className={styles.onboardingBannerHeading}>What would you like to work on?</h2>
+        <p className={styles.onboardingBannerSubtitle}>
+          Select categories to get a personalised "Recommended for you" section at the top of the network.
+        </p>
+        <div className={styles.onboardingChips} role="group" aria-label="Select categories">
+          {CATEGORIES.map((cat) => {
+            const selected = selectedKeys.includes(cat.key);
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                className={`${styles.onboardingChip}${selected ? ` ${styles.onboardingChipSelected}` : ''}`}
+                aria-pressed={selected}
+                onClick={() => onToggle(cat.key)}
+              >
+                {cat.label}
+                {cat.emptyState && (
+                  <span className={styles.onboardingChipComingSoon} aria-label="coming soon">soon</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <button
+        type="button"
+        className={styles.onboardingBannerDismiss}
+        onClick={onDismiss}
+        aria-label="Dismiss category recommendations banner"
+        title="Dismiss"
+      >
+        ×
+      </button>
+    </section>
+  );
+}
+
+/* ── Recommended Section ─────────────────────────────────────────────── */
+
+function RecommendedSection({
+  cards,
+  selectedCategories,
+  priority,
+  onCardClick,
+  onOpenStats,
+  columnsStyle,
+}: {
+  cards: CardItem[];
+  selectedCategories: Category[];
+  priority: RoutingPriority;
+  onCardClick: (v: string, peerId: string) => void;
+  onOpenStats: (item: CardItem) => void;
+  columnsStyle: number;
+}) {
+  const tagLabel = selectedCategories.map((c) => c.label).join(', ');
+  return (
+    <section className={styles.recommendedSection} aria-label={`Recommended for ${tagLabel}`}>
+      <h2 className={styles.recommendedHeading}>
+        Recommended for <span className={styles.recommendedTags}>{tagLabel}</span>
+      </h2>
+      {cards.length === 0 ? (
+        <p className={styles.recommendedEmpty}>
+          No services in your selected categories yet — check back as the network grows.
+        </p>
+      ) : (
+        <div
+          className={styles.cardGrid}
+          style={{ '--discover-columns': columnsStyle } as CSSProperties}
+        >
+          {cards.map((item) => (
+            <Card
+              key={item.canonicalName || item.value || item.name}
+              item={item}
+              priority={priority}
+              onClick={onCardClick}
+              onOpenStats={onOpenStats}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

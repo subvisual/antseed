@@ -87,6 +87,9 @@ export type ChatModuleApi = {
   clearPinnedPeer: () => void;
   setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
   dismissRoutingTooltip: () => void;
+  dismissOnboardingBanner: () => void;
+  reopenOnboardingBanner: () => void;
+  setOnboardingCategories: (categories: string[]) => void;
   handleLogLineForThinkingPhase: (line: string) => void;
 };
 
@@ -2378,6 +2381,30 @@ export function initChatModule({
     notifyUiStateChanged();
   }
 
+  function dismissOnboardingBanner(): void {
+    uiState.onboardingBannerDismissed = true;
+    notifyUiStateChanged();
+    if (bridge?.chatAiSetOnboardingPrefs) {
+      void bridge.chatAiSetOnboardingPrefs({ bannerDismissed: true }).catch(() => undefined);
+    }
+  }
+
+  function reopenOnboardingBanner(): void {
+    uiState.onboardingBannerDismissed = false;
+    notifyUiStateChanged();
+    if (bridge?.chatAiSetOnboardingPrefs) {
+      void bridge.chatAiSetOnboardingPrefs({ bannerDismissed: false }).catch(() => undefined);
+    }
+  }
+
+  function setOnboardingCategories(categories: string[]): void {
+    uiState.onboardingSelectedCategories = categories;
+    notifyUiStateChanged();
+    if (bridge?.chatAiSetOnboardingPrefs) {
+      void bridge.chatAiSetOnboardingPrefs({ selectedCategories: categories }).catch(() => undefined);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Bridge callbacks
   // ---------------------------------------------------------------------------
@@ -2932,6 +2959,21 @@ export function initChatModule({
     }).catch(() => undefined);
   }
 
+  // Load buyer-scoped onboarding prefs (banner dismissed flag + selected categories).
+  if (bridge?.chatAiGetOnboardingPrefs) {
+    void bridge.chatAiGetOnboardingPrefs().then((result) => {
+      if (result.ok && result.data) {
+        uiState.onboardingBannerDismissed = result.data.bannerDismissed;
+        uiState.onboardingSelectedCategories = result.data.selectedCategories;
+      }
+      uiState.onboardingPrefsLoaded = true;
+    }).catch(() => {
+      uiState.onboardingPrefsLoaded = true;
+    });
+  } else {
+    uiState.onboardingPrefsLoaded = true;
+  }
+
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
@@ -2985,5 +3027,8 @@ export function initChatModule({
     clearPinnedPeer,
     setRoutingPriority,
     dismissRoutingTooltip,
+    dismissOnboardingBanner,
+    reopenOnboardingBanner,
+    setOnboardingCategories,
   };
 }

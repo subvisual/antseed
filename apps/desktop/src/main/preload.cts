@@ -251,6 +251,12 @@ const api = {
   chatAiSetBuyerRoutingDefaults(patch: { defaultPriority?: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed?: boolean }): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('chat:ai-set-buyer-routing-defaults', patch);
   },
+  chatAiGetOnboardingPrefs(): Promise<{ ok: boolean; data?: { bannerDismissed: boolean; selectedCategories: string[] }; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-get-onboarding-prefs');
+  },
+  chatAiSetOnboardingPrefs(patch: { bannerDismissed?: boolean; selectedCategories?: string[] }): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-set-onboarding-prefs', patch);
+  },
   chatAiGetProxyStatus(): Promise<{ ok: boolean; data: { running: boolean; port: number } }> {
     return ipcRenderer.invoke('chat:ai-get-proxy-status');
   },

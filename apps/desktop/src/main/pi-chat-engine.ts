@@ -26,6 +26,10 @@ import {
   type RoutingPriority,
 } from './chat-routing-priority.js';
 import {
+  readOnboardingPrefs,
+  writeOnboardingPrefs,
+} from './onboarding-prefs.js';
+import {
   clearStickyState,
   deleteChatStickyState,
   getSkipSet,
@@ -3137,6 +3141,30 @@ export function registerPiChatHandlers({
           return { ok: false, error: `Unknown routing priority: ${String(patch.defaultPriority)}` };
         }
         await writeBuyerRoutingDefaults(patch, configPath);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: asErrorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle('chat:ai-get-onboarding-prefs', async () => {
+    try {
+      const prefs = await readOnboardingPrefs(configPath);
+      return { ok: true, data: prefs };
+    } catch (err) {
+      return { ok: false, error: asErrorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(
+    'chat:ai-set-onboarding-prefs',
+    async (
+      _event,
+      patch: { bannerDismissed?: boolean; selectedCategories?: string[] },
+    ) => {
+      try {
+        await writeOnboardingPrefs(patch, configPath);
         return { ok: true };
       } catch (err) {
         return { ok: false, error: asErrorMessage(err) };

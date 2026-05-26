@@ -178,6 +178,8 @@ export type DesktopBridge = {
   chatAiSetRoutingPriority?: (conversationId: string, priority: 'cheapest' | 'fastest' | 'most-trusted') => Promise<{ ok: boolean; error?: string }>;
   chatAiGetBuyerRoutingDefaults?: () => Promise<{ ok: boolean; data?: { defaultPriority: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed: boolean }; error?: string }>;
   chatAiSetBuyerRoutingDefaults?: (patch: { defaultPriority?: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  chatAiGetOnboardingPrefs?: () => Promise<{ ok: boolean; data?: { bannerDismissed: boolean; selectedCategories: string[] }; error?: string }>;
+  chatAiSetOnboardingPrefs?: (patch: { bannerDismissed?: boolean; selectedCategories?: string[] }) => Promise<{ ok: boolean; error?: string }>;
   chatAiGetProxyStatus?: () => Promise<{ ok: boolean; data: { running: boolean; port: number } }>;
   apiTryProxyRequest?: (params: {
     port: number;
