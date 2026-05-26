@@ -638,6 +638,10 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
     [actions],
   );
 
+  const handleRoutingTooltipDismiss = useCallback(() => {
+    actions.dismissRoutingTooltip();
+  }, [actions]);
+
   const pendingSwitchOption = useMemo(
     () =>
       pendingSwitchValue
@@ -1047,9 +1051,11 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
         {snap.chatActiveConversation && (
           <div className={styles.pageHeaderRight}>
             <RoutingPriorityChip
-              value={snap.chatRoutingPriority}
+              value={snap.chatRoutingPriorityIsUnset ? undefined : snap.chatRoutingPriority}
               disabled={snap.chatInputDisabled || snap.chatSending}
+              tooltipDismissed={snap.chatRoutingTooltipDismissed}
               onChange={handleRoutingPriorityChange}
+              onTooltipDismiss={handleRoutingTooltipDismiss}
             />
             {snap.chatActiveConversation && currentPeerId && (
               <button

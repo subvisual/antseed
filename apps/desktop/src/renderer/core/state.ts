@@ -260,6 +260,10 @@ export type RendererUiState = {
   chatSelectedServiceValue: string;
   chatSelectedPeerId: string;
   chatRoutingPriority: 'cheapest' | 'fastest' | 'most-trusted';
+  /** True when the current chat has no explicit routing priority set (shows ? chip). */
+  chatRoutingPriorityIsUnset: boolean;
+  /** True once the buyer has dismissed the one-time routing-priority tooltip. */
+  chatRoutingTooltipDismissed: boolean;
   chatServiceStatus: BadgeState;
   chatProxyStatus: BadgeState;
   chatDeleteVisible: boolean;
@@ -404,6 +408,8 @@ export function createInitialUiState(): RendererUiState {
     chatSelectedServiceValue: '',
     chatSelectedPeerId: '',
     chatRoutingPriority: 'most-trusted',
+    chatRoutingPriorityIsUnset: false,
+    chatRoutingTooltipDismissed: false,
     chatServiceStatus: { tone: 'idle', label: 'Services idle' },
     chatProxyStatus: { tone: 'idle', label: 'Proxy offline' },
     chatDeleteVisible: false,

@@ -21,6 +21,8 @@ import {
 import {
   ANTSEED_ROUTING_PRIORITY_CUSTOM_TYPE,
   resolveLatestRoutingPriority,
+  readBuyerRoutingDefaults,
+  writeBuyerRoutingDefaults,
   type RoutingPriority,
 } from './chat-routing-priority.js';
 import {
@@ -3045,6 +3047,39 @@ export function registerPiChatHandlers({
       }
       await store.setRoutingPriority(conversationId, priority);
       return { ok: true };
+    },
+  );
+
+  ipcMain.handle('chat:ai-get-buyer-routing-defaults', async () => {
+    try {
+      const defaults = await readBuyerRoutingDefaults(configPath);
+      return { ok: true, data: defaults };
+    } catch (err) {
+      return { ok: false, error: asErrorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(
+    'chat:ai-set-buyer-routing-defaults',
+    async (
+      _event,
+      patch: { defaultPriority?: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed?: boolean },
+    ) => {
+      try {
+        if (
+          'defaultPriority' in patch &&
+          patch.defaultPriority !== null &&
+          patch.defaultPriority !== 'cheapest' &&
+          patch.defaultPriority !== 'fastest' &&
+          patch.defaultPriority !== 'most-trusted'
+        ) {
+          return { ok: false, error: `Unknown routing priority: ${String(patch.defaultPriority)}` };
+        }
+        await writeBuyerRoutingDefaults(patch, configPath);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: asErrorMessage(err) };
+      }
     },
   );
 

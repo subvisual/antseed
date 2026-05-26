@@ -3,13 +3,26 @@
  *
  * Pattern mirrors chat-peer-selection.ts: a typed custom entry is appended to
  * the session log, and the latest entry wins when the conversation is loaded.
+ *
+ * Buyer-scoped defaults (global default priority + tooltip-dismissed flag) are
+ * stored in config.json under `buyer.defaultRoutingPriority` and
+ * `buyer.routingPriorityTooltipDismissed` via the mergeConfig helper.
  */
+
+import { mergeConfig, readConfig } from './config-io.js'
 
 export type RoutingPriority = 'cheapest' | 'fastest' | 'most-trusted'
 
 export const DEFAULT_ROUTING_PRIORITY: RoutingPriority = 'most-trusted'
 
 export const ANTSEED_ROUTING_PRIORITY_CUSTOM_TYPE = 'antseed:routing-priority'
+
+export type BuyerRoutingDefaults = {
+  /** Buyer's last explicit priority choice; null means never picked. */
+  defaultPriority: RoutingPriority | null
+  /** True once the one-time tooltip has been dismissed or a pick has been made. */
+  tooltipDismissed: boolean
+}
 
 type PersistedRoutingEntry = {
   type?: string
@@ -44,4 +57,42 @@ export function resolveLatestRoutingPriority(
     }
   }
   return DEFAULT_ROUTING_PRIORITY
+}
+
+/**
+ * Read buyer-scoped routing defaults from config.json.
+ * Returns safe zero-values if the fields are absent (first-run scenario).
+ */
+export async function readBuyerRoutingDefaults(
+  configPath?: string,
+): Promise<BuyerRoutingDefaults> {
+  const config = await readConfig(configPath)
+  const buyer =
+    config.buyer && typeof config.buyer === 'object' && !Array.isArray(config.buyer)
+      ? (config.buyer as Record<string, unknown>)
+      : {}
+  const rawPriority = buyer['defaultRoutingPriority']
+  const defaultPriority = isValidPriority(rawPriority) ? rawPriority : null
+  const tooltipDismissed = buyer['routingPriorityTooltipDismissed'] === true
+  return { defaultPriority, tooltipDismissed }
+}
+
+/**
+ * Persist buyer-scoped routing defaults into config.json.
+ * Partial updates are accepted — omitted fields are left unchanged.
+ */
+export async function writeBuyerRoutingDefaults(
+  patch: Partial<BuyerRoutingDefaults>,
+  configPath?: string,
+): Promise<void> {
+  const buyerPatch: Record<string, unknown> = {}
+  if ('defaultPriority' in patch) {
+    buyerPatch['defaultRoutingPriority'] = patch.defaultPriority ?? null
+  }
+  if ('tooltipDismissed' in patch) {
+    buyerPatch['routingPriorityTooltipDismissed'] = patch.tooltipDismissed === true
+  }
+  if (Object.keys(buyerPatch).length > 0) {
+    await mergeConfig({ buyer: buyerPatch }, configPath)
+  }
 }

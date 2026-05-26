@@ -86,6 +86,7 @@ export type ChatModuleApi = {
   handleServiceBlur: () => void;
   clearPinnedPeer: () => void;
   setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
+  dismissRoutingTooltip: () => void;
   handleLogLineForThinkingPhase: (line: string) => void;
 };
 
@@ -1555,6 +1556,8 @@ export function initChatModule({
         } else {
           uiState.chatRoutingPriority = 'most-trusted';
         }
+        // Opening an existing conversation always clears the ? state.
+        uiState.chatRoutingPriorityIsUnset = false;
 
         setLocalConversationMessages(convId, uiState.chatMessages as ChatMessage[]);
         updateThreadMeta(activeConversation);
@@ -1597,6 +1600,13 @@ export function initChatModule({
     // render the WalkingAnt inside the empty new-chat screen.
     syncActiveConversationSendingState();
     updateThreadMeta(null);
+    // If the tooltip has never been dismissed and the buyer has no prior
+    // default, show the ? state so the one-time tooltip can be presented.
+    if (!uiState.chatRoutingTooltipDismissed) {
+      uiState.chatRoutingPriorityIsUnset = true;
+    } else {
+      uiState.chatRoutingPriorityIsUnset = false;
+    }
     notifyUiStateChanged();
   }
 
@@ -2331,11 +2341,38 @@ export function initChatModule({
 
   function setRoutingPriority(priority: 'cheapest' | 'fastest' | 'most-trusted'): void {
     uiState.chatRoutingPriority = priority;
+    uiState.chatRoutingPriorityIsUnset = false;
     if (activeConversation) {
       activeConversation.routingPriority = priority;
     }
     if (bridge?.chatAiSetRoutingPriority && uiState.chatActiveConversation) {
       void bridge.chatAiSetRoutingPriority(uiState.chatActiveConversation, priority)
+        .catch(() => undefined);
+    }
+    // Seed the global default and mark tooltip as dismissed for future new chats.
+    if (bridge?.chatAiSetBuyerRoutingDefaults) {
+      void bridge.chatAiSetBuyerRoutingDefaults({
+        defaultPriority: priority,
+        tooltipDismissed: true,
+      }).catch(() => undefined);
+    }
+    uiState.chatRoutingTooltipDismissed = true;
+    notifyUiStateChanged();
+  }
+
+  function dismissRoutingTooltip(): void {
+    uiState.chatRoutingTooltipDismissed = true;
+    uiState.chatRoutingPriorityIsUnset = false;
+    // Closing without picking defaults the chat to Most Trusted.
+    if (activeConversation) {
+      activeConversation.routingPriority = 'most-trusted';
+    }
+    if (bridge?.chatAiSetRoutingPriority && uiState.chatActiveConversation) {
+      void bridge.chatAiSetRoutingPriority(uiState.chatActiveConversation, 'most-trusted')
+        .catch(() => undefined);
+    }
+    if (bridge?.chatAiSetBuyerRoutingDefaults) {
+      void bridge.chatAiSetBuyerRoutingDefaults({ tooltipDismissed: true })
         .catch(() => undefined);
     }
     notifyUiStateChanged();
@@ -2883,6 +2920,18 @@ export function initChatModule({
   updateStreamingIndicator();
   void refreshChatServiceOptions();
 
+  // Load buyer-scoped routing defaults (global default priority + tooltip flag).
+  if (bridge?.chatAiGetBuyerRoutingDefaults) {
+    void bridge.chatAiGetBuyerRoutingDefaults().then((result) => {
+      if (result.ok && result.data) {
+        uiState.chatRoutingTooltipDismissed = result.data.tooltipDismissed;
+        if (result.data.defaultPriority) {
+          uiState.chatRoutingPriority = result.data.defaultPriority;
+        }
+      }
+    }).catch(() => undefined);
+  }
+
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
@@ -2935,5 +2984,6 @@ export function initChatModule({
     handleServiceBlur,
     clearPinnedPeer,
     setRoutingPriority,
+    dismissRoutingTooltip,
   };
 }

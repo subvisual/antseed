@@ -245,6 +245,12 @@ const api = {
   chatAiSetRoutingPriority(conversationId: string, priority: 'cheapest' | 'fastest' | 'most-trusted'): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('chat:ai-set-routing-priority', conversationId, priority);
   },
+  chatAiGetBuyerRoutingDefaults(): Promise<{ ok: boolean; data?: { defaultPriority: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed: boolean }; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-get-buyer-routing-defaults');
+  },
+  chatAiSetBuyerRoutingDefaults(patch: { defaultPriority?: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed?: boolean }): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-set-buyer-routing-defaults', patch);
+  },
   chatAiGetProxyStatus(): Promise<{ ok: boolean; data: { running: boolean; port: number } }> {
     return ipcRenderer.invoke('chat:ai-get-proxy-status');
   },

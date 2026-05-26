@@ -450,6 +450,7 @@ registerActions({
   handleServiceBlur: chatApi.handleServiceBlur,
   clearPinnedPeer: chatApi.clearPinnedPeer,
   setRoutingPriority: chatApi.setRoutingPriority,
+  dismissRoutingTooltip: chatApi.dismissRoutingTooltip,
   rejectPaymentSession: () => {
     uiState.chatPaymentApprovalVisible = false;
     uiState.chatPaymentApprovalPeerId = null;

@@ -23,6 +23,7 @@ export type AppActions = {
   handleServiceBlur: () => void;
   clearPinnedPeer: () => void;
   setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
+  dismissRoutingTooltip: () => void;
   rejectPaymentSession: () => void;
   retryAfterPayment: () => void;
   requestChannelClose: () => void;
