@@ -363,8 +363,8 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+    outline: 0.125rem solid var(--accent);
+    outline-offset: 0.0625rem;
   }
 }
 
