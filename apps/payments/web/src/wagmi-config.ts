@@ -1,6 +1,18 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { connectorsForWallets, getDefaultWallets } from '@rainbow-me/rainbowkit';
+import { createConfig } from '@privy-io/wagmi';
 import { base } from 'wagmi/chains';
 import { http, fallback } from 'viem';
+
+const walletConnectProjectId = '9a1851410cb5589bc351a6dabf17140e';
+const { wallets } = getDefaultWallets({
+  appName: 'AntSeed Payments',
+  projectId: walletConnectProjectId,
+});
+
+const connectors = connectorsForWallets(wallets, {
+  appName: 'AntSeed Payments',
+  projectId: walletConnectProjectId,
+});
 
 // Fallback order was picked via a benchmark of the 3-concurrent-eth_call
 // pattern that broke the desktop credits pill (getBuyerBalance +
@@ -15,10 +27,9 @@ import { http, fallback } from 'viem';
 //
 // Users with production traffic should override via an Alchemy/Infura
 // endpoint. Mirrors the @antseed/node default primary.
-export const wagmiConfig = getDefaultConfig({
-  appName: 'AntSeed Payments',
-  projectId: '9a1851410cb5589bc351a6dabf17140e',
+export const wagmiConfig = createConfig({
   chains: [base],
+  connectors,
   transports: {
     [base.id]: fallback([
       http('https://base-rpc.publicnode.com'),

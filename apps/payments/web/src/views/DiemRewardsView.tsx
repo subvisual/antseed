@@ -51,6 +51,10 @@ function asBigint(value: unknown): bigint {
   return typeof value === 'bigint' ? value : 0n;
 }
 
+function asBoolean(value: unknown): boolean {
+  return value === true;
+}
+
 export function DiemRewardsView({ config }: DiemRewardsViewProps) {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
@@ -125,7 +129,7 @@ export function DiemRewardsView({ config }: DiemRewardsViewProps) {
       const rewardRows: DiemRewardRow[] = epochs.map((epoch, i) => ({
         epoch,
         amount: asBigint(rows[i * 2]?.result),
-        claimed: rows[i * 2 + 1]?.result === true,
+        claimed: asBoolean(rows[i * 2 + 1]?.result),
       }));
 
       setSnapshot({

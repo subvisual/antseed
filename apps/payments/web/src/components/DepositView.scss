@@ -534,6 +534,46 @@
   line-height: 1.5;
 }
 
+.deposit-privy-card {
+  padding-bottom: 18px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--input-bg);
+}
+
+.deposit-privy-wallet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  > div {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    background: var(--card-bg);
+  }
+
+  span {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+  }
+
+  strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 750;
+    color: var(--text-primary);
+  }
+}
+
 .deposit-balance-details {
   display: flex;
   flex-direction: column;

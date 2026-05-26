@@ -7,7 +7,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  type TooltipProps,
 } from 'recharts';
 import type { BuyerUsageChannelPoint } from '../api';
 import { formatCompact } from '../utils/format';
@@ -23,6 +22,11 @@ interface BucketPoint {
   fullDate: string;     // full label for tooltip
   requests: number;
   tokens: number;       // input + output
+}
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: BucketPoint }>;
 }
 
 const DAY_MS = 86_400_000;
@@ -95,9 +99,9 @@ function formatFullDate(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function ChartTooltip({ active, payload }: TooltipProps<number, string>) {
+function ChartTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
-  const p = payload[0]?.payload as BucketPoint | undefined;
+  const p = payload[0]?.payload;
   if (!p) return null;
   return (
     <div className="usage-chart-tooltip">

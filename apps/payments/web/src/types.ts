@@ -17,4 +17,5 @@ export interface PaymentConfig {
   antsTokenAddress: string | null;
   networkStatsUrl: string | null;
   evmAddress: string | null;
+  privyAppId: string | null;
 }

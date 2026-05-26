@@ -34,6 +34,9 @@ export function createDefaultConfig(): AntseedConfig {
     payments: {
       preferredMethod: 'crypto',
       platformFeeRate: 0.05,
+      privy: {
+        appId: 'cmpmsn8sq00lp0cjvjqubzony',
+      },
       crypto: {
         chainId: 'base-mainnet',
       },

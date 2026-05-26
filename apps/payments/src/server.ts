@@ -11,6 +11,7 @@ import { registerRoutes } from './routes.js';
 import { loadCryptoContext, type CryptoContext, type PaymentCryptoConfig } from './crypto-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_PRIVY_APP_ID = 'cmpmsn8sq00lp0cjvjqubzony';
 
 export interface PaymentsServerOptions {
   port: number;
@@ -72,6 +73,7 @@ export async function createServer(options: PaymentsServerOptions) {
 
   // Resolve chain config: protocol defaults + user overrides from config.json
   let userOverrides: Record<string, unknown> = {};
+  let privyAppId: string | null = DEFAULT_PRIVY_APP_ID;
   let proxyPort = 8377;
   try {
     const cfgPath = options.dataDir
@@ -81,6 +83,9 @@ export async function createServer(options: PaymentsServerOptions) {
     const config = JSON.parse(raw) as Record<string, unknown>;
     const payments = (config.payments ?? {}) as Record<string, unknown>;
     userOverrides = (payments.crypto ?? {}) as Record<string, unknown>;
+    const privy = (payments.privy ?? {}) as Record<string, unknown>;
+    const configuredPrivyAppId = typeof privy.appId === 'string' ? privy.appId.trim() : '';
+    privyAppId = configuredPrivyAppId.length > 0 ? configuredPrivyAppId : DEFAULT_PRIVY_APP_ID;
     const buyer = (config.buyer ?? {}) as Record<string, unknown>;
     if (typeof buyer.proxyPort === 'number') {
       proxyPort = buyer.proxyPort;
@@ -116,7 +121,7 @@ export async function createServer(options: PaymentsServerOptions) {
     usdcContractAddress: chainConfig.usdcContractAddress,
   };
 
-  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort });
+  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort, privyAppId });
 
   // SPA fallback — only if static files are available
   if (staticRegistered) {

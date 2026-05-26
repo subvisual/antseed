@@ -17,6 +17,7 @@ function mockCtx(overrides: Partial<Parameters<typeof registerRoutes>[1]> = {}):
       emissionsContractAddress: '0x' + '3'.repeat(40),
     } as any,
     proxyPort: 3000,
+    privyAppId: 'cmpmsn8sq00lp0cjvjqubzony',
     ...overrides,
   };
 }
@@ -29,6 +30,7 @@ describe('GET /api/config', () => {
     const body = res.json();
     expect(body).toHaveProperty('emissionsContractAddress');
     expect(body.emissionsContractAddress).toBe('0x' + '3'.repeat(40));
+    expect(body.privyAppId).toBe('cmpmsn8sq00lp0cjvjqubzony');
     await app.close();
   });
 

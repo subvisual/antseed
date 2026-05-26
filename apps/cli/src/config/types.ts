@@ -135,6 +135,11 @@ export interface PaymentsCLIConfig {
   maxPerRequestUsdc?: string;
   /** Maximum total USDC the buyer will reserve in a single SpendingAuth in base units. Default: "1000000" ($1.00). */
   maxReserveAmountUsdc?: string;
+  /** Privy portal onboarding settings */
+  privy?: {
+    /** Public Privy app ID used by the payments portal */
+    appId: string;
+  };
   /**
    * Optional on-chain seller contract (e.g. DiemStakingProxy). When set, the
    * peer publishes it in metadata; buyers verify the binding via

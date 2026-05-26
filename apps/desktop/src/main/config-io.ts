@@ -10,6 +10,7 @@ export const DESKTOP_DEFAULT_MAX_OUTPUT_USD_PER_MILLION = 30;
 export const DESKTOP_DEFAULT_MIN_PEER_REPUTATION = 0;
 export const DESKTOP_DEFAULT_PEER_REFRESH_INTERVAL_MS = 5 * 60_000;
 export const DESKTOP_DEFAULT_METADATA_FETCH_TIMEOUT_MS = 1500;
+export const DESKTOP_DEFAULT_PRIVY_APP_ID = 'cmpmsn8sq00lp0cjvjqubzony';
 
 const DEFAULT_CONFIG: Record<string, unknown> = {
   identity: { displayName: 'AntSeed Node' },
@@ -32,7 +33,11 @@ const DEFAULT_CONFIG: Record<string, unknown> = {
     metadataFetchTimeoutMs: DESKTOP_DEFAULT_METADATA_FETCH_TIMEOUT_MS,
   },
   network: { bootstrapNodes: [] },
-  payments: { preferredMethod: 'crypto', platformFeeRate: 0.05 },
+  payments: {
+    preferredMethod: 'crypto',
+    platformFeeRate: 0.05,
+    privy: { appId: DESKTOP_DEFAULT_PRIVY_APP_ID },
+  },
   providers: [],
   plugins: [],
 };
@@ -140,6 +145,33 @@ function migrateDesktopBuyerDefaults(config: Record<string, unknown>): {
   };
 }
 
+function migrateDesktopPaymentDefaults(config: Record<string, unknown>): {
+  config: Record<string, unknown>;
+  migrated: boolean;
+} {
+  const payments = asRecordValue(config.payments);
+  const privy = asRecordValue(payments.privy);
+  const existingAppId = asString(privy.appId, '');
+
+  if (existingAppId.trim().length > 0) {
+    return { config, migrated: false };
+  }
+
+  return {
+    config: {
+      ...config,
+      payments: {
+        ...payments,
+        privy: {
+          ...privy,
+          appId: DESKTOP_DEFAULT_PRIVY_APP_ID,
+        },
+      },
+    },
+    migrated: true,
+  };
+}
+
 /**
  * Ensure config.json exists and legacy desktop defaults are migrated.
  */
@@ -155,9 +187,10 @@ export async function ensureConfig(configPath = DEFAULT_CONFIG_PATH): Promise<vo
     return;
   }
 
-  const migration = migrateDesktopBuyerDefaults(existing);
-  if (migration.migrated) {
-    await writeConfigAtomic(migration.config, configPath);
+  const buyerMigration = migrateDesktopBuyerDefaults(existing);
+  const paymentMigration = migrateDesktopPaymentDefaults(buyerMigration.config);
+  if (buyerMigration.migrated || paymentMigration.migrated) {
+    await writeConfigAtomic(paymentMigration.config, configPath);
   }
 }
 

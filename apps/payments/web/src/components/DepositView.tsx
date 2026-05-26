@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { usePrivy, useWallets, useCreateWallet, useFiatOnramp, type ConnectedWallet } from '@privy-io/react-auth';
+import { useSetActiveWallet } from '@privy-io/wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import {
   useAccount,
@@ -7,12 +9,14 @@ import {
   useWaitForTransactionReceipt,
   useReadContract,
 } from 'wagmi';
+import { base } from 'wagmi/chains';
 import { formatUnits, parseUnits } from 'viem';
 import type { BalanceData, PaymentConfig } from '../types';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import './DepositView.scss';
 
 const MIN_FIRST_DEPOSIT = 1; // USDC — matches AntseedDeposits.MIN_BUYER_DEPOSIT
+const PRIVY_ONRAMP_MIN_FIAT_AMOUNT = 50;
 
 function formatUsd(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,6 +44,22 @@ function getSuggestedDeposit(maxDeposit: number, isFirstDeposit: boolean): strin
   const floor = isFirstDeposit ? MIN_FIRST_DEPOSIT : 0;
   if (maxDeposit <= 0 || maxDeposit < floor) return '';
   return formatAmountInput(Math.max(floor, Math.min(10, maxDeposit)));
+}
+
+function getPrivyOnrampDefaultAmount(suggestedAmount: string): string {
+  const parsed = Number.parseFloat(suggestedAmount);
+  const amount = Number.isFinite(parsed)
+    ? Math.max(PRIVY_ONRAMP_MIN_FIAT_AMOUNT, Math.ceil(parsed))
+    : PRIVY_ONRAMP_MIN_FIAT_AMOUNT;
+  return String(amount);
+}
+
+function getPrivyOnrampErrorMessage(error: unknown): string {
+  const message = getErrorMessage(error, 'Could not start the card purchase flow.');
+  if (/quote|onramp|provider|funding/i.test(message)) {
+    return 'Privy could not return a USDC quote. Check that card funding providers are enabled for this Privy app, then try again.';
+  }
+  return message;
 }
 
 interface DepositViewProps {
@@ -92,10 +112,11 @@ const ERC20_ABI = [
   },
 ] as const;
 
-type DepositMethod = 'crypto' | 'card';
+type DepositMethod = 'privy' | 'crypto';
 
 export function DepositView({ config, balance, buyerAddress, onDeposited }: DepositViewProps) {
-  const [method, setMethod] = useState<DepositMethod>('crypto');
+  const [method, setMethod] = useState<DepositMethod>('privy');
+  const [privyLoginRequest, setPrivyLoginRequest] = useState(0);
 
   return (
     <div className="deposit">
@@ -107,6 +128,19 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
 
         <div className="deposit-methods">
           <button
+            className={`deposit-method ${method === 'privy' ? 'deposit-method--active' : ''}`}
+            onClick={() => {
+              setMethod('privy');
+              setPrivyLoginRequest((n) => n + 1);
+            }}
+          >
+            <span className="deposit-method-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.2"/><line x1="1" y1="6.5" x2="15" y2="6.5" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="9.5" x2="8" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+            </span>
+            <span className="deposit-method-label">Buy Credits</span>
+            <span className="deposit-method-desc">Email + card</span>
+          </button>
+          <button
             className={`deposit-method ${method === 'crypto' ? 'deposit-method--active' : ''}`}
             onClick={() => setMethod('crypto')}
           >
@@ -116,27 +150,24 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
             <span className="deposit-method-label">Crypto Wallet</span>
             <span className="deposit-method-desc">MetaMask, Coinbase, etc.</span>
           </button>
-          <button
-            className={`deposit-method ${method === 'card' ? 'deposit-method--active' : ''}`}
-            onClick={() => setMethod('card')}
-          >
-            <span className="deposit-method-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.2"/><line x1="1" y1="6.5" x2="15" y2="6.5" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="9.5" x2="8" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-            </span>
-            <span className="deposit-method-label">Credit Card</span>
-            <span className="deposit-method-desc">Coming soon</span>
-          </button>
         </div>
 
-        {method === 'crypto' ? (
+        {method === 'privy' ? (
+          <PrivyCreditsDeposit
+            config={config}
+            balance={balance}
+            buyerAddress={buyerAddress}
+            onDeposited={onDeposited}
+            onUseCrypto={() => setMethod('crypto')}
+            loginRequest={privyLoginRequest}
+          />
+        ) : (
           <CryptoDeposit
             config={config}
             balance={balance}
             buyerAddress={buyerAddress}
             onDeposited={onDeposited}
           />
-        ) : (
-          <CardDepositPlaceholder />
         )}
       </div>
     </div>
@@ -467,22 +498,9 @@ function CryptoDeposit({ config, balance, buyerAddress, onDeposited }: {
 
           <DepositTrustCard
             onOpenDetails={() => setTrustDetailsOpen(true)}
-            targetChainName={targetChainName}
-            walletAddress={address}
-            antseedAddress={depositTarget as string | undefined}
-            depositsContract={config?.depositsContractAddress}
-            usdcContract={config?.usdcContractAddress}
             balanceKnown={balanceKnown}
             currentTotal={currentTotal}
-            currentAvailable={currentAvailable}
-            currentReserved={currentReserved}
-            creditLimit={creditLimit}
-            remainingCreditLimit={remainingCreditLimit}
-            walletUsdcBalance={walletUsdcBalance}
-            walletUsdcKnown={walletUsdcKnown}
-            walletUsdcLoading={walletUsdcLoading || walletUsdcFetching}
             maxDeposit={maxDeposit}
-            maxDepositReason={maxDepositReason}
           />
 
           <TrustDetailsModal
@@ -854,21 +872,219 @@ function DepositWizard({
   );
 }
 
-/* ── Credit Card (coming soon) ── */
+/* ── Buy credits (Privy embedded wallet + fiat on-ramp) ── */
 
-function CardDepositPlaceholder() {
+function findEmbeddedEthereumWallet(wallets: ConnectedWallet[]): ConnectedWallet | undefined {
+  return wallets.find((wallet) =>
+    wallet.type === 'ethereum' &&
+    (wallet.walletClientType === 'privy' || wallet.walletClientType === 'privy-v2')
+  );
+}
+
+function PrivyCreditsDeposit({ config, balance, buyerAddress, onDeposited, onUseCrypto, loginRequest }: {
+  config: PaymentConfig | null;
+  balance: BalanceData | null;
+  buyerAddress: string | null;
+  onDeposited: () => void;
+  onUseCrypto: () => void;
+  loginRequest: number;
+}) {
+  const { ready: privyReady, authenticated, login } = usePrivy();
+  const { wallets, ready: walletsReady } = useWallets();
+  const { createWallet } = useCreateWallet();
+  const { setActiveWallet } = useSetActiveWallet();
+  const { fund } = useFiatOnramp();
+
+  const embeddedWallet = findEmbeddedEthereumWallet(wallets);
+  const [creatingWallet, setCreatingWallet] = useState(false);
+  const [walletCreateAttempted, setWalletCreateAttempted] = useState(false);
+  const [funding, setFunding] = useState(false);
+  const [showDepositForm, setShowDepositForm] = useState(false);
+  const [fundingStatus, setFundingStatus] = useState<'idle' | 'submitted' | 'confirmed'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const lastLoginRequestRef = useRef(0);
+
+  const baseMainnetOnly = config?.chainId === 'base-mainnet' && config?.evmChainId === base.id;
+
+  const {
+    data: walletUsdcRaw,
+    refetch: refetchWalletUsdc,
+    isLoading: walletUsdcLoading,
+    isFetching: walletUsdcFetching,
+  } = useReadContract({
+    address: config?.usdcContractAddress as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    chainId: base.id,
+    args: [embeddedWallet?.address as `0x${string}`],
+    query: { enabled: Boolean(baseMainnetOnly && config && embeddedWallet?.address) },
+  });
+
+  const walletUsdcBalance = walletUsdcRaw === undefined
+    ? null
+    : Number.parseFloat(formatUnits(walletUsdcRaw, 6));
+  const walletUsdcKnown = walletUsdcBalance !== null && Number.isFinite(walletUsdcBalance);
+  const hasWalletUsdc = walletUsdcKnown && walletUsdcBalance > 0;
+  const currentTotal = parseUsd(balance?.total);
+  const creditLimit = parseUsd(balance?.creditLimit);
+  const remainingCreditLimit = balance ? Math.max(0, creditLimit - currentTotal) : 0;
+  const suggestedAmount = getSuggestedDeposit(remainingCreditLimit || 10, currentTotal === 0) || '10';
+
+  useEffect(() => {
+    if (!authenticated || !walletsReady || embeddedWallet || creatingWallet || walletCreateAttempted) return;
+    setCreatingWallet(true);
+    setWalletCreateAttempted(true);
+    setError(null);
+    void createWallet()
+      .catch((err) => setError(getErrorMessage(err, 'Could not create your AntSeed wallet.')))
+      .finally(() => setCreatingWallet(false));
+  }, [authenticated, walletsReady, embeddedWallet, creatingWallet, walletCreateAttempted, createWallet]);
+
+  useEffect(() => {
+    if (!embeddedWallet) return;
+    void setActiveWallet(embeddedWallet).catch(() => {
+      // The deposit step will surface wallet state errors if activation failed.
+    });
+  }, [embeddedWallet, setActiveWallet]);
+
+  useEffect(() => {
+    if (loginRequest === 0 || loginRequest === lastLoginRequestRef.current) return;
+    if (!privyReady || authenticated) return;
+    lastLoginRequestRef.current = loginRequest;
+    setError(null);
+    login({ loginMethods: ['email'] });
+  }, [authenticated, login, loginRequest, privyReady]);
+
+  async function handleLogin() {
+    setError(null);
+    login({ loginMethods: ['email'] });
+  }
+
+  async function handleBuyCredits() {
+    if (!embeddedWallet) return;
+    setError(null);
+    setFunding(true);
+    try {
+      await setActiveWallet(embeddedWallet);
+      const defaultAmount = getPrivyOnrampDefaultAmount(suggestedAmount);
+      const result = await fund({
+        source: {
+          assets: ['usd', 'eur', 'gbp'],
+        },
+        destination: {
+          asset: 'usdc',
+          chain: 'eip155:8453',
+          address: embeddedWallet.address,
+        },
+        environment: 'production',
+        defaultAmount,
+      });
+      setFundingStatus(result.status);
+      void refetchWalletUsdc();
+      window.setTimeout(() => void refetchWalletUsdc(), 5000);
+    } catch (err) {
+      setError(getPrivyOnrampErrorMessage(err));
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  if (!baseMainnetOnly) {
+    return (
+      <div className="deposit-form">
+        <div className="deposit-connect-explainer">
+          Buy credits is available for Base Mainnet payments. Use a crypto wallet for this network.
+        </div>
+        <button type="button" className="btn-outline" onClick={onUseCrypto}>
+          Use crypto wallet
+        </button>
+      </div>
+    );
+  }
+
+  if (showDepositForm) {
+    return (
+      <div className="deposit-form">
+        <div className="deposit-connect-explainer">
+          USDC is in your Privy wallet. Deposit it into AntSeed to make it available for chat.
+        </div>
+        <CryptoDeposit
+          config={config}
+          balance={balance}
+          buyerAddress={buyerAddress}
+          onDeposited={onDeposited}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="deposit-form">
-      <div className="deposit-card-coming">
+      <div className="deposit-card-coming deposit-privy-card">
         <div className="deposit-card-coming-icon">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.2"/><line x1="1" y1="6.5" x2="15" y2="6.5" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="9.5" x2="8" y2="9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
         </div>
-        <div className="deposit-card-coming-title">Credit card deposits coming soon</div>
+        <div className="deposit-card-coming-title">Buy credits with email</div>
         <div className="deposit-card-coming-desc">
-          Direct credit card deposits are being integrated.
-          For now, use the crypto wallet option.
+          Create a wallet with email, buy Base USDC, then deposit it into AntSeed.
         </div>
       </div>
+
+      {!privyReady ? (
+        <div className="deposit-connect-explainer">Preparing email wallet login...</div>
+      ) : !authenticated ? (
+        <button type="button" className="btn-primary" onClick={handleLogin}>
+          Continue with email
+        </button>
+      ) : creatingWallet || !walletsReady || !embeddedWallet ? (
+        <div className="deposit-connect-explainer">Preparing your credits wallet...</div>
+      ) : (
+        <>
+          <div className="deposit-privy-wallet">
+            <div>
+              <span>Credits wallet</span>
+              <strong>{shortAddress(embeddedWallet.address)}</strong>
+            </div>
+            <div>
+              <span>Wallet USDC</span>
+              <strong>
+                {walletUsdcKnown
+                  ? `$${formatUsd(walletUsdcBalance ?? 0)}`
+                  : walletUsdcLoading || walletUsdcFetching
+                    ? 'Loading...'
+                    : '--'}
+              </strong>
+            </div>
+          </div>
+
+          {fundingStatus !== 'idle' && (
+            <div className="status-msg" role="status">
+              {fundingStatus === 'confirmed'
+                ? 'USDC purchase confirmed. It may take a moment to appear in your wallet.'
+                : 'USDC purchase submitted. The provider may take a few minutes to deliver funds.'}
+            </div>
+          )}
+
+          <button type="button" className="btn-primary" onClick={handleBuyCredits} disabled={funding}>
+            {funding ? 'Opening purchase flow...' : 'Buy credits'}
+          </button>
+
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => setShowDepositForm(true)}
+            disabled={!hasWalletUsdc}
+          >
+            {hasWalletUsdc ? 'Deposit to AntSeed' : 'Deposit to AntSeed after USDC arrives'}
+          </button>
+        </>
+      )}
+
+      {error && (
+        <div className="status-msg status-error">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
