@@ -1,7 +1,7 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import type { CSSProperties, MouseEvent } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import type { CSSProperties, MouseEvent, KeyboardEvent, RefObject } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Copy01Icon, Tick02Icon, ContractsIcon } from '@hugeicons/core-free-icons';
+import { Copy01Icon, Tick02Icon, ContractsIcon, InformationCircleIcon } from '@hugeicons/core-free-icons';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import type { ChatServiceOptionEntry, DiscoverRow } from '../../../core/state';
@@ -318,6 +318,36 @@ function ProviderAvatar({ name, gradient }: { name: string; gradient: string }) 
   );
 }
 
+/* ── Stats helpers (drawer) ──────────────────────────────────────────── */
+
+function formatVolumeUsdc(value: number): string {
+  if (value <= 0) return '$0';
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(2)}k`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatReputationScore(score: number | null): string {
+  if (score === null) return '—';
+  return score.toFixed(1);
+}
+
+function formatLatencyMs(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return '—';
+  return `${Math.max(0, Math.round(ms))}ms`;
+}
+
+function formatCount(n: number): string {
+  if (n <= 0) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toLocaleString();
+}
+
+function sybilHasSignals(flags: string[]): boolean {
+  return flags.length > 0;
+}
+
 /* ── Main component ──────────────────────────────────────────────────── */
 
 type DiscoverWelcomeProps = {
@@ -386,6 +416,30 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
   const [pageSize, setPageSize] = useState(() => estimatePageSize());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerClosing, setDrawerClosing] = useState(false);
+
+  // Stats drawer — separate from filter drawer; tracks which card is open.
+  const [statsCard, setStatsCard] = useState<CardItem | null>(null);
+  const [statsDrawerClosing, setStatsDrawerClosing] = useState(false);
+  const statsDrawerRef = useRef<HTMLElement>(null);
+  // Tracks the button that opened the stats drawer so focus can be restored on close.
+  const statsDrawerOpenerRef = useRef<HTMLElement | null>(null);
+
+  const openStatsDrawer = useCallback((item: CardItem) => {
+    // Capture the currently focused element so we can restore focus on close.
+    statsDrawerOpenerRef.current = document.activeElement as HTMLElement | null;
+    setStatsCard(item);
+  }, []);
+
+  const closeStatsDrawer = useCallback(() => {
+    setStatsDrawerClosing(true);
+    window.setTimeout(() => {
+      setStatsCard(null);
+      setStatsDrawerClosing(false);
+      // Restore focus to the affordance that opened the drawer.
+      statsDrawerOpenerRef.current?.focus();
+      statsDrawerOpenerRef.current = null;
+    }, 200);
+  }, []);
 
   const closeDrawer = useCallback(() => {
     setDrawerClosing(true);
@@ -543,6 +597,7 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
                     item={item}
                     priority={routingPriority}
                     onClick={handleClick}
+                    onOpenStats={openStatsDrawer}
                   />
                 ))}
               </div>
@@ -587,6 +642,15 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
             <DiscoverFilters filters={filterState} />
           </div>
         </aside>
+      )}
+
+      {(statsCard !== null || statsDrawerClosing) && statsCard && (
+        <StatsDrawer
+          item={statsCard}
+          closing={statsDrawerClosing}
+          onClose={closeStatsDrawer}
+          drawerRef={statsDrawerRef}
+        />
       )}
     </div>
   );
@@ -652,10 +716,12 @@ function Card({
   item,
   priority,
   onClick,
+  onOpenStats,
 }: {
   item: CardItem;
   priority: RoutingPriority;
   onClick: (v: string, peerId: string) => void;
+  onOpenStats: (item: CardItem) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -694,6 +760,16 @@ function Card({
       // Clipboard permission can be denied; keep the card interaction unchanged.
     });
   }, [copyValue]);
+
+  const handleOpenStats = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenStats(item);
+  }, [onOpenStats, item]);
+
+  const handleOpenStatsKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
 
   return (
     <div
@@ -749,39 +825,291 @@ function Card({
 
       {/* Footer: provider attribution + forecast */}
       <div className={styles.cardFooter}>
-        <div className={styles.cardProvider}>
-          <span className={styles.cardProviderBy}>By</span>
-          <ProviderAvatar name={providerName} gradient={item.gradient} />
-          <span className={styles.cardProviderName}>{providerDisplay}</span>
-          {item.knownProxy && (
-            <InfoTooltip
-              align="left"
-              content={(
-                <>
-                  <strong>{item.knownProxy.label}</strong>
-                  <span>{item.knownProxy.description}</span>
-                </>
-              )}
-            >
-              <span
-                className={styles.proxyBadge}
-                tabIndex={0}
-                role="button"
-                aria-label={`${item.knownProxy.label} — ${item.knownProxy.description}`}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
+        <div className={styles.cardFooterMain}>
+          <div className={styles.cardProvider}>
+            <span className={styles.cardProviderBy}>By</span>
+            <ProviderAvatar name={providerName} gradient={item.gradient} />
+            <span className={styles.cardProviderName}>{providerDisplay}</span>
+            {item.knownProxy && (
+              <InfoTooltip
+                align="left"
+                content={(
+                  <>
+                    <strong>{item.knownProxy.label}</strong>
+                    <span>{item.knownProxy.description}</span>
+                  </>
+                )}
               >
-                <HugeiconsIcon icon={ContractsIcon} size={11} strokeWidth={1.8} />
-              </span>
-            </InfoTooltip>
+                <span
+                  className={styles.proxyBadge}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${item.knownProxy.label} — ${item.knownProxy.description}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <HugeiconsIcon icon={ContractsIcon} size={11} strokeWidth={1.8} />
+                </span>
+              </InfoTooltip>
+            )}
+          </div>
+          {forecastLine && (
+            <div className={styles.cardForecast} aria-label={`Forecast: ${forecastLine}`}>
+              {forecastLine}
+            </div>
           )}
         </div>
-        {forecastLine && (
-          <div className={styles.cardForecast} aria-label={`Forecast: ${forecastLine}`}>
-            {forecastLine}
-          </div>
-        )}
+        <button
+          type="button"
+          className={styles.cardDetailsBtn}
+          onClick={handleOpenStats}
+          onKeyDown={handleOpenStatsKeyDown}
+          aria-label={`Show stats details for ${item.displayName}`}
+          title="Show details"
+        >
+          <HugeiconsIcon icon={InformationCircleIcon} size={14} strokeWidth={1.7} />
+        </button>
       </div>
     </div>
+  );
+}
+
+/* ── StatsDrawer ─────────────────────────────────────────────────────── */
+
+function StatsDrawer({
+  item,
+  closing,
+  onClose,
+  drawerRef,
+}: {
+  item: CardItem;
+  closing: boolean;
+  onClose: () => void;
+  drawerRef: RefObject<HTMLElement>;
+}) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Focus management: focus first element inside when drawer opens.
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
+  // Escape key closes.
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  // Focus trap: keep Tab/Shift+Tab inside the drawer.
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Tab') return;
+    const el = e.currentTarget;
+    const focusable = el.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }, []);
+
+  // Click-outside closes.
+  const handleBackdropClick = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const hasSybil = sybilHasSignals(item.sybilFlags);
+  const anyKnownProxy = item.knownProxy !== null
+    || item.groupedRows.some((r) => getKnownProxy(r.sellerContract) !== null);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`${styles.statsDrawerBackdrop}${closing ? ` ${styles.statsDrawerBackdropClosing}` : ''}`}
+        onClick={handleBackdropClick}
+        aria-hidden="true"
+      />
+      <aside
+        ref={drawerRef as RefObject<HTMLElement>}
+        className={`${styles.statsDrawer}${closing ? ` ${styles.statsDrawerClosing}` : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Stats for ${item.displayName}`}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Header */}
+        <div className={styles.drawerHeader}>
+          <span className={styles.drawerTitle}>{item.displayName}</span>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className={styles.drawerClose}
+            onClick={onClose}
+            aria-label="Close details"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className={styles.drawerBody}>
+          {/* Aggregate stats section */}
+          <div className={styles.statsSection}>
+            <div className={styles.statsSectionTitle}>Overview</div>
+            <dl className={styles.statsList}>
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>Reputation</dt>
+                <dd className={`${styles.statsValue}${item.reputationScore !== null && item.reputationScore < 40 ? ` ${styles.statsValueWarn}` : ''}`}>
+                  {formatReputationScore(item.reputationScore)}
+                </dd>
+              </div>
+              {item.sybilRisk !== null && (
+                <div className={styles.statsRow}>
+                  <dt className={styles.statsLabel}>Sybil risk</dt>
+                  <dd className={`${styles.statsValue}${hasSybil ? ` ${styles.statsValueWarn}` : ''}`}>
+                    {item.sybilRisk.toFixed(2)}
+                    {hasSybil && (
+                      <span className={styles.statsFlags} title={item.sybilFlags.join(', ')}>
+                        {' '}({item.sybilFlags.join(', ')})
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>Channels</dt>
+                <dd className={styles.statsValue}>{item.channelCount > 0 ? item.channelCount : '—'}</dd>
+              </div>
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>USDC volume</dt>
+                <dd className={styles.statsValue}>{item.volumeUsdc > 0 ? formatVolumeUsdc(item.volumeUsdc) : '—'}</dd>
+              </div>
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>Requests</dt>
+                <dd className={styles.statsValue}>{item.lifetimeRequests > 0 ? formatCount(item.lifetimeRequests) : '—'}</dd>
+              </div>
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>Tokens</dt>
+                <dd className={styles.statsValue}>{item.lifetimeTokens > 0 ? formatCount(item.lifetimeTokens) : '—'}</dd>
+              </div>
+              <div className={styles.statsRow}>
+                <dt className={styles.statsLabel}>Latency</dt>
+                <dd className={styles.statsValue}>{formatLatencyMs(item.latencyMs)}</dd>
+              </div>
+              {anyKnownProxy && (
+                <div className={styles.statsRow}>
+                  <dt className={styles.statsLabel}>Proxy</dt>
+                  <dd className={styles.statsValue}>
+                    <span className={styles.statsProxyBadge}>
+                      <HugeiconsIcon icon={ContractsIcon} size={11} strokeWidth={1.8} />
+                      {item.knownProxy?.label ?? 'Known pool'}
+                    </span>
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+
+          {/* Per-provider rows */}
+          {item.groupedRows.length > 0 && (
+            <div className={styles.statsSection}>
+              <div className={styles.statsSectionTitle}>
+                Providers ({item.groupedRows.length})
+              </div>
+              <div className={styles.providerList}>
+                {item.groupedRows.map((row) => {
+                  const rowProxy = getKnownProxy(row.sellerContract);
+                  const rowRequests = pickRequests(row);
+                  const rowTokens = pickTokens(row);
+                  const rowVolumeUsdc = Number(row.onChainTotalVolumeUsdc) / 1_000_000;
+                  return (
+                    <div key={row.rowKey} className={styles.providerRow}>
+                      <div className={styles.providerRowHeader}>
+                        <ProviderAvatar
+                          name={row.peerLabel || row.provider || row.peerId}
+                          gradient={getPeerGradient(row.peerId || row.peerLabel || row.provider || row.serviceId)}
+                        />
+                        <span className={styles.providerRowName}>
+                          {getPeerDisplayName(row.peerLabel) || row.provider || row.peerId.slice(0, 8)}
+                        </span>
+                        {rowProxy && (
+                          <span
+                            className={styles.providerRowProxy}
+                            title={`${rowProxy.label} — ${rowProxy.description}`}
+                          >
+                            <HugeiconsIcon icon={ContractsIcon} size={10} strokeWidth={1.8} />
+                          </span>
+                        )}
+                      </div>
+                      <dl className={styles.providerRowStats}>
+                        {row.onChainReputationScore !== null && (
+                          <div className={styles.providerStatItem}>
+                            <dt>Rep</dt>
+                            <dd>{formatReputationScore(row.onChainReputationScore)}</dd>
+                          </div>
+                        )}
+                        <div className={styles.providerStatItem}>
+                          <dt>Ch</dt>
+                          <dd>{row.onChainActiveChannelCount > 0 ? row.onChainActiveChannelCount : '—'}</dd>
+                        </div>
+                        {rowVolumeUsdc > 0 && (
+                          <div className={styles.providerStatItem}>
+                            <dt>Vol</dt>
+                            <dd>{formatVolumeUsdc(rowVolumeUsdc)}</dd>
+                          </div>
+                        )}
+                        {rowRequests > 0 && (
+                          <div className={styles.providerStatItem}>
+                            <dt>Req</dt>
+                            <dd>{formatCount(rowRequests)}</dd>
+                          </div>
+                        )}
+                        {rowTokens > 0 && (
+                          <div className={styles.providerStatItem}>
+                            <dt>Tok</dt>
+                            <dd>{formatCount(rowTokens)}</dd>
+                          </div>
+                        )}
+                        {row.latencyMs !== null && (
+                          <div className={styles.providerStatItem}>
+                            <dt>Lat</dt>
+                            <dd>{formatLatencyMs(row.latencyMs)}</dd>
+                          </div>
+                        )}
+                        {row.onChainSybilFlags.length > 0 && (
+                          <div className={`${styles.providerStatItem} ${styles.providerStatWarn}`}>
+                            <dt>Sybil</dt>
+                            <dd title={row.onChainSybilFlags.join(', ')}>
+                              {row.onChainSybilFlags.length} flag{row.onChainSybilFlags.length !== 1 ? 's' : ''}
+                            </dd>
+                          </div>
+                        )}
+                      </dl>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }
