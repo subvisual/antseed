@@ -242,6 +242,9 @@ const api = {
   chatAiSelectPeer(payload: { conversationId?: string | null; peerId?: string | null }): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('chat:ai-select-peer', payload);
   },
+  chatAiSetRoutingPriority(conversationId: string, priority: 'cheapest' | 'fastest' | 'most-trusted'): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-set-routing-priority', conversationId, priority);
+  },
   chatAiGetProxyStatus(): Promise<{ ok: boolean; data: { running: boolean; port: number } }> {
     return ipcRenderer.invoke('chat:ai-get-proxy-status');
   },

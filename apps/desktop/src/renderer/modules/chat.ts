@@ -85,6 +85,7 @@ export type ChatModuleApi = {
   handleServiceFocus: () => void;
   handleServiceBlur: () => void;
   clearPinnedPeer: () => void;
+  setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
   handleLogLineForThinkingPhase: (line: string) => void;
 };
 
@@ -1544,6 +1545,17 @@ export function initChatModule({
           uiState.chatSelectedPeerId = convPeerIdForMatch;
         }
 
+        const convPriority = conv.routingPriority as string | undefined;
+        if (
+          convPriority === 'cheapest'
+          || convPriority === 'fastest'
+          || convPriority === 'most-trusted'
+        ) {
+          uiState.chatRoutingPriority = convPriority;
+        } else {
+          uiState.chatRoutingPriority = 'most-trusted';
+        }
+
         setLocalConversationMessages(convId, uiState.chatMessages as ChatMessage[]);
         updateThreadMeta(activeConversation);
         uiState.chatError = null;
@@ -2317,6 +2329,18 @@ export function initChatModule({
     notifyUiStateChanged();
   }
 
+  function setRoutingPriority(priority: 'cheapest' | 'fastest' | 'most-trusted'): void {
+    uiState.chatRoutingPriority = priority;
+    if (activeConversation) {
+      activeConversation.routingPriority = priority;
+    }
+    if (bridge?.chatAiSetRoutingPriority && uiState.chatActiveConversation) {
+      void bridge.chatAiSetRoutingPriority(uiState.chatActiveConversation, priority)
+        .catch(() => undefined);
+    }
+    notifyUiStateChanged();
+  }
+
   // ---------------------------------------------------------------------------
   // Bridge callbacks
   // ---------------------------------------------------------------------------
@@ -2910,5 +2934,6 @@ export function initChatModule({
     handleServiceFocus,
     handleServiceBlur,
     clearPinnedPeer,
+    setRoutingPriority,
   };
 }

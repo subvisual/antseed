@@ -19,6 +19,11 @@ import {
   type ChatPeerSelectionRequest,
 } from './chat-peer-selection.js';
 import {
+  ANTSEED_ROUTING_PRIORITY_CUSTOM_TYPE,
+  resolveLatestRoutingPriority,
+  type RoutingPriority,
+} from './chat-routing-priority.js';
+import {
   buildAttachmentPromptText,
   extractAttachmentImages,
   prepareChatAttachments,
@@ -148,6 +153,7 @@ type AiConversation = {
   updatedAt: number;
   usage: AiUsageTotals;
   workspacePath?: string;
+  routingPriority: RoutingPriority;
 };
 
 type AiConversationSummary = {
@@ -164,6 +170,7 @@ type AiConversationSummary = {
   totalTokens: number;
   totalEstimatedCostUsd: number;
   workspacePath?: string;
+  routingPriority: RoutingPriority;
 };
 
 type RegisterPiChatHandlersOptions = {
@@ -1344,6 +1351,9 @@ class PiConversationStore {
     }
 
     const peerData = extractPeerFromEntries(manager);
+    const routingPriority = resolveLatestRoutingPriority(
+      manager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>,
+    );
     // SessionManager reads the cwd persisted in the session file; restoration
     // across app restarts depends on that value reflecting the session workspace.
     const sessionCwd = manager.getCwd() || undefined;
@@ -1356,6 +1366,7 @@ class PiConversationStore {
       createdAt,
       updatedAt,
       usage,
+      routingPriority,
       ...(peerData?.peerId ? { peerId: peerData.peerId } : {}),
       ...(peerData?.peerLabel ? { peerLabel: peerData.peerLabel } : {}),
       ...(sessionCwd ? { workspacePath: sessionCwd } : {}),
@@ -1402,6 +1413,7 @@ class PiConversationStore {
         usage: conversation.usage,
         totalTokens,
         totalEstimatedCostUsd: deriveCost(conversation.messages),
+        routingPriority: conversation.routingPriority,
         ...(conversation.peerId ? { peerId: conversation.peerId } : {}),
         ...(conversation.peerLabel ? { peerLabel: conversation.peerLabel } : {}),
         ...(conversation.workspacePath ? { workspacePath: conversation.workspacePath } : {}),
@@ -1425,6 +1437,7 @@ class PiConversationStore {
         usage: conversation.usage,
         totalTokens,
         totalEstimatedCostUsd: deriveCost(conversation.messages),
+        routingPriority: conversation.routingPriority,
         ...(conversation.peerId ? { peerId: conversation.peerId } : {}),
         ...(conversation.peerLabel ? { peerLabel: conversation.peerLabel } : {}),
         ...(conversation.workspacePath ? { workspacePath: conversation.workspacePath } : {}),
@@ -1482,6 +1495,12 @@ class PiConversationStore {
     const manager = await this.openSessionManager(id);
     if (!manager) return;
     manager.appendCustomEntry(ANTSEED_PEER_CUSTOM_TYPE, {});
+  }
+
+  async setRoutingPriority(id: string, priority: RoutingPriority): Promise<void> {
+    const manager = await this.openSessionManager(id);
+    if (!manager) return;
+    manager.appendCustomEntry(ANTSEED_ROUTING_PRIORITY_CUSTOM_TYPE, { priority });
   }
 
   async delete(id: string): Promise<void> {
@@ -2918,5 +2937,20 @@ export function registerPiChatHandlers({
       return { ok: false, error: asErrorMessage(err) };
     }
   });
+
+  ipcMain.handle(
+    'chat:ai-set-routing-priority',
+    async (_event, conversationId: string, priority: RoutingPriority) => {
+      if (
+        priority !== 'cheapest'
+        && priority !== 'fastest'
+        && priority !== 'most-trusted'
+      ) {
+        return { ok: false, error: `Unknown routing priority: ${String(priority)}` };
+      }
+      await store.setRoutingPriority(conversationId, priority);
+      return { ok: true };
+    },
+  );
 
 }

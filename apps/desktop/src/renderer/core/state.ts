@@ -259,6 +259,7 @@ export type RendererUiState = {
   discoverRows: DiscoverRow[];
   chatSelectedServiceValue: string;
   chatSelectedPeerId: string;
+  chatRoutingPriority: 'cheapest' | 'fastest' | 'most-trusted';
   chatServiceStatus: BadgeState;
   chatProxyStatus: BadgeState;
   chatDeleteVisible: boolean;
@@ -402,6 +403,7 @@ export function createInitialUiState(): RendererUiState {
     discoverRows: [],
     chatSelectedServiceValue: '',
     chatSelectedPeerId: '',
+    chatRoutingPriority: 'most-trusted',
     chatServiceStatus: { tone: 'idle', label: 'Services idle' },
     chatProxyStatus: { tone: 'idle', label: 'Proxy offline' },
     chatDeleteVisible: false,

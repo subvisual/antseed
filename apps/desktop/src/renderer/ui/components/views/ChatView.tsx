@@ -23,6 +23,7 @@ import { WalkingAnt } from '../chat/WalkingAnt';
 import { SessionApprovalCard } from '../chat/SessionApprovalCard';
 import { LowBalanceWarning } from '../chat/LowBalanceWarning';
 import { ServiceDropdown } from '../chat/ServiceDropdown';
+import { RoutingPriorityChip } from '../chat/RoutingPriorityChip';
 import { SwitchServiceDialog } from '../chat/SwitchServiceDialog';
 import { LowReputationDialog } from '../chat/LowReputationDialog';
 import { ServiceSwitchTooltip } from '../chat/ServiceSwitchTooltip';
@@ -630,6 +631,13 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
     setPendingSwitchValue(null);
   }, []);
 
+  const handleRoutingPriorityChange = useCallback(
+    (priority: 'cheapest' | 'fastest' | 'most-trusted') => {
+      actions.setRoutingPriority(priority);
+    },
+    [actions],
+  );
+
   const pendingSwitchOption = useMemo(
     () =>
       pendingSwitchValue
@@ -1038,6 +1046,11 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
         </div>
         {snap.chatActiveConversation && (
           <div className={styles.pageHeaderRight}>
+            <RoutingPriorityChip
+              value={snap.chatRoutingPriority}
+              disabled={snap.chatInputDisabled || snap.chatSending}
+              onChange={handleRoutingPriorityChange}
+            />
             {snap.chatActiveConversation && currentPeerId && (
               <button
                 type="button"
