@@ -347,6 +347,17 @@
   white-space: nowrap;
 }
 
+.card-latency-badge {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-latency-badge-ok {
+  color: var(--text-primary);
+}
+
 .card-score-badge {
   display: inline-flex;
   align-items: center;

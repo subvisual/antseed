@@ -60,6 +60,8 @@ export interface PeerInfo {
    * transient DHT staleness.
    */
   lastReachedAt?: number;
+  /** Latest keepalive round-trip time in ms, measured on buyer-initiated connections. */
+  keepaliveLatencyMs?: number;
   /** LLM providers this peer is offering (empty if buyer-only). */
   providers: string[];
   /** Seller-reported reputation score (0-100). */

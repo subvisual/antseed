@@ -16,6 +16,7 @@ export function normalizeDiscoverRow(raw: unknown): DiscoverRow | null {
   const peerId = String(r.peerId ?? '').trim();
   const serviceId = String(r.serviceId ?? '').trim();
   if (!peerId || !serviceId) return null;
+  const latencyMs = r.latencyMs ?? r.pingLatencyMs;
   return {
     rowKey: String(r.rowKey ?? `${peerId}:${serviceId}`),
     serviceId,
@@ -59,6 +60,9 @@ export function normalizeDiscoverRow(raw: unknown): DiscoverRow | null {
     networkRequests: toNullableBigintString(r.networkRequests),
     networkInputTokens: toNullableBigintString(r.networkInputTokens),
     networkOutputTokens: toNullableBigintString(r.networkOutputTokens),
+    latencyMs: typeof latencyMs === 'number' && Number.isFinite(latencyMs)
+      ? latencyMs
+      : null,
     selectionValue: String(r.selectionValue ?? ''),
   };
 }

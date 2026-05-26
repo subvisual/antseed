@@ -37,6 +37,7 @@ const SORT_OPTIONS: Array<{ key: DiscoverSortKey; label: string }> = [
   { key: 'serviceDesc',     label: 'Name Z–A' },
   { key: 'priceAsc',        label: 'Price low to high' },
   { key: 'priceDesc',       label: 'Price high to low' },
+  { key: 'latencyAsc',      label: 'Lowest latency' },
   { key: 'stakeDesc',       label: 'Most staked' },
   { key: 'lastSettledDesc', label: 'Recently settled' },
 ];
@@ -71,6 +72,7 @@ type CardItem = {
   sybilFlags: string[];
   lifetimeRequests: number;   // network-wide (mainnet) or local buyer total (fallback)
   lifetimeTokens: number;     // network-wide (mainnet) or local buyer total (fallback)
+  latencyMs: number | null;
 };
 
 const SYBIL_WARN_THRESHOLD = 0.30;
@@ -157,6 +159,7 @@ function buildCards(options: ChatServiceOptionEntry[]): CardItem[] {
       sybilFlags: [],
       lifetimeRequests: 0,
       lifetimeTokens: 0,
+      latencyMs: null,
     };
   });
 }
@@ -216,6 +219,7 @@ function buildCardsFromRows(rows: DiscoverRow[]): CardItem[] {
       sybilFlags: row.onChainSybilFlags,
       lifetimeRequests: pickRequests(row),
       lifetimeTokens: pickTokens(row),
+      latencyMs: row.latencyMs,
     });
   }
   return out;
@@ -238,6 +242,11 @@ function formatVolumeUsdc(n: number): string {
   if (n >= 100) return n.toFixed(0);
   if (n >= 10) return n.toFixed(1).replace(/\.0$/, '');
   return n.toFixed(2).replace(/\.00$/, '');
+}
+
+function formatLatency(latencyMs: number | null): string {
+  if (latencyMs == null || !Number.isFinite(latencyMs)) return 'No latency';
+  return `${Math.max(0, Math.round(latencyMs))} ms`;
 }
 
 function isLowReputation(score: number | null): boolean {
@@ -648,6 +657,11 @@ function Card({
     && (!hasCachedInput || item.cachedInputUsdPerMillion === 0);
   const lowReputation = isLowReputation(item.reputationScore);
   const reputationTooltip = formatReputationTooltip(item);
+  const latencyLabel = formatLatency(item.latencyMs);
+  const hasLatency = item.latencyMs != null;
+  const latencyTitle = hasLatency
+    ? `Keepalive latency: ${latencyLabel}`
+    : 'No latency yet';
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -766,6 +780,13 @@ function Card({
             )}
           </div>
           <div className={styles.cardFooterMetrics}>
+            <span
+              className={`${styles.cardLatencyBadge}${hasLatency ? ` ${styles.cardLatencyBadgeOk}` : ''}`}
+              title={latencyTitle}
+              aria-label={latencyTitle}
+            >
+              {latencyLabel}
+            </span>
             <span>{formatCompact(item.channelCount)} session{item.channelCount === 1 ? '' : 's'}</span>
             <InfoTooltip
               align="right"

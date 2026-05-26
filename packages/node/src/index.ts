@@ -7,6 +7,7 @@ export {
   type RequestStreamResponseMetadata,
   type BuyerUsageTotals,
   type BuyerUsageChannelPoint,
+  type PeerKeepaliveTelemetry,
 } from './node.js';
 export type { Provider, ProviderStreamCallbacks } from './interfaces/seller-provider.js';
 export type { Router } from './interfaces/buyer-router.js';

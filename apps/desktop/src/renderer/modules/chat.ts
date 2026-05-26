@@ -1235,6 +1235,7 @@ export function initChatModule({
         .map((raw) => normalizeDiscoverRow(raw))
         .filter((row): row is DiscoverRow => row !== null);
       uiState.discoverRows = rows;
+      notifyUiStateChanged();
       const optionsToRender = rows.length > 0 ? projectRowsToChatServiceOptions(rows) : fallback;
       updateChatServiceOptions(optionsToRender);
       setServiceCatalogStatus(

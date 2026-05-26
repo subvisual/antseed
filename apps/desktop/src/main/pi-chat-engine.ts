@@ -280,6 +280,7 @@ type DiscoverRowEntry = {
   networkRequests: string | null;
   networkInputTokens: string | null;
   networkOutputTokens: string | null;
+  latencyMs: number | null;
   selectionValue: string;
 };
 
@@ -601,7 +602,50 @@ type BuyerStateDiscoveredPeer = {
   onChainSybilFlags: string[];
   sellerContract?: string;
   providerPricing?: Record<string, { services?: Record<string, { cachedInputUsdPerMillion?: number }> }>;
+  keepaliveLatencyMs: number | null;
 };
+
+async function loadBuyerStateDiscoveredPeers(): Promise<Record<string, BuyerStateDiscoveredPeer>> {
+  // Static imports at the top of the file — see note on the
+  // `discoverChatServiceCatalog` read for why these must not be
+  // dynamic in packaged Windows builds.
+  const discoveredPeersMap: Record<string, BuyerStateDiscoveredPeer> = {};
+  try {
+    const raw = await readFile(DEFAULT_BUYER_STATE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const arr = Array.isArray(parsed.discoveredPeers) ? parsed.discoveredPeers : [];
+    for (const p of arr) {
+      if (p && typeof p === 'object' && typeof (p as { peerId?: unknown }).peerId === 'string') {
+        const rec = p as Record<string, unknown>;
+        const peerId = rec.peerId as string;
+        discoveredPeersMap[peerId] = {
+          onChainAgentId: typeof rec.onChainAgentId === 'number' ? rec.onChainAgentId : null,
+          onChainStakeUsdcMicros: typeof rec.onChainStakeUsdcMicros === 'number' ? rec.onChainStakeUsdcMicros : null,
+          onChainChannelCount: typeof rec.onChainChannelCount === 'number' ? rec.onChainChannelCount : null,
+          onChainGhostCount: typeof rec.onChainGhostCount === 'number' ? rec.onChainGhostCount : null,
+          onChainTotalVolumeUsdcMicros: typeof rec.onChainTotalVolumeUsdcMicros === 'number' ? rec.onChainTotalVolumeUsdcMicros : null,
+          onChainLastSettledAtSec: typeof rec.onChainLastSettledAtSec === 'number' ? rec.onChainLastSettledAtSec : null,
+          onChainReputationScore: typeof rec.onChainReputationScore === 'number' ? rec.onChainReputationScore : null,
+          onChainTrustScore: typeof rec.onChainTrustScore === 'number' ? rec.onChainTrustScore : null,
+          onChainSybilRisk: typeof rec.onChainSybilRisk === 'number' ? rec.onChainSybilRisk : null,
+          onChainSybilFlags: Array.isArray(rec.onChainSybilFlags)
+            ? rec.onChainSybilFlags.filter((f: unknown): f is string => typeof f === 'string')
+            : [],
+          sellerContract: typeof rec.sellerContract === 'string' ? rec.sellerContract : undefined,
+          providerPricing: rec.providerPricing as Record<string, {
+            services?: Record<string, { cachedInputUsdPerMillion?: number }>
+          }> | undefined,
+          keepaliveLatencyMs: typeof rec.keepaliveLatencyMs === 'number' && Number.isFinite(rec.keepaliveLatencyMs)
+            ? rec.keepaliveLatencyMs
+            : null,
+        };
+      }
+    }
+  } catch {
+    // No state file yet
+  }
+  return discoveredPeersMap;
+}
 
 export function invalidateOnChainEnrichmentCache(): void {
   // On-chain enrichment now comes from the buyer daemon's buyer.state.json.
@@ -652,6 +696,7 @@ async function buildDiscoverRows(
     const networkRequests = netForAgent ? netForAgent.requests.toString() : null;
     const networkInputTokens = netForAgent ? netForAgent.inputTokens.toString() : null;
     const networkOutputTokens = netForAgent ? netForAgent.outputTokens.toString() : null;
+    const latencyMs = peerBlob?.keepaliveLatencyMs ?? null;
 
     rows.push({
       rowKey: `${peerId}:${entry.id}`,
@@ -689,10 +734,46 @@ async function buildDiscoverRows(
       networkRequests,
       networkInputTokens,
       networkOutputTokens,
+      latencyMs,
       selectionValue: `${entry.provider}\u0001${entry.id}\u0001${peerId}`,
     });
   }
   return rows;
+}
+
+async function preconnectDiscoverPeers(
+  peerIds: string[],
+  buyerPort: number,
+  options: { concurrency: number; timeoutMs: number },
+): Promise<void> {
+  const queue = peerIds
+    .filter((peerId, index, arr) => peerId && arr.indexOf(peerId) === index);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < queue.length) {
+      const peerId = queue[nextIndex++];
+      if (!peerId) continue;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+      try {
+        await fetch(`${LOCALHOST_URL}:${buyerPort}/_antseed/connect`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ peerId }),
+          signal: controller.signal,
+        });
+      } catch {
+        // Best-effort preconnect only. Failed peers stay visible without latency.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(options.concurrency, queue.length) }, () => worker()),
+  );
 }
 
 function toUsage(value: unknown): Usage {
@@ -2454,7 +2535,13 @@ export function registerPiChatHandlers({
   let lastServiceCatalogEntries: ChatServiceCatalogEntry[] = [];
   let lastServiceCatalogRefreshAt = 0;
   const SERVICE_CATALOG_DEBOUNCE_MS = 5_000;
+  const SERVICE_METERING_FETCH_TIMEOUT_MS = 1_500;
+  const DISCOVER_LATENCY_PRECONNECT_TIMEOUT_MS = 2_500;
+  const DISCOVER_LATENCY_PRECONNECT_CONCURRENCY = 4;
+  const DISCOVER_LATENCY_REFRESH_DEBOUNCE_MS = 5 * 60_000;
   let serviceCatalogRefreshPromise: Promise<ChatServiceCatalogEntry[]> | null = null;
+  let latencyPreconnectPromise: Promise<void> | null = null;
+  let lastLatencyPreconnectAt = 0;
 
   const refreshServiceCatalogFromNetwork = async (): Promise<ChatServiceCatalogEntry[]> => {
     // Deduplicate concurrent calls
@@ -2543,10 +2630,33 @@ export function registerPiChatHandlers({
       const uniqueCatalogPeerIds = Array.from(new Set(
         entries.map((e) => e.peerId ?? '').filter((p) => p.length > 0)
       ));
+      const discoveredPeersMap = await loadBuyerStateDiscoveredPeers();
+      const peersMissingLatency = uniqueCatalogPeerIds.filter((peerId) => (
+        discoveredPeersMap[peerId]?.keepaliveLatencyMs == null
+      ));
+      const shouldRefreshLatency = Date.now() - lastLatencyPreconnectAt >= DISCOVER_LATENCY_REFRESH_DEBOUNCE_MS;
+      const latencyPreconnectPeerIds = peersMissingLatency.length > 0
+        ? peersMissingLatency
+        : shouldRefreshLatency ? uniqueCatalogPeerIds : [];
+      if (
+        latencyPreconnectPeerIds.length > 0
+        && !latencyPreconnectPromise
+      ) {
+        lastLatencyPreconnectAt = Date.now();
+        latencyPreconnectPromise = preconnectDiscoverPeers(latencyPreconnectPeerIds, buyerPort, {
+          concurrency: DISCOVER_LATENCY_PRECONNECT_CONCURRENCY,
+          timeoutMs: DISCOVER_LATENCY_PRECONNECT_TIMEOUT_MS,
+        }).finally(() => {
+          latencyPreconnectPromise = null;
+        });
+      }
       await Promise.all(uniqueCatalogPeerIds.map(async (peerId) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SERVICE_METERING_FETCH_TIMEOUT_MS);
         try {
           const resp = await fetch(
             `${LOCALHOST_URL}:${buyerPort}/_antseed/metering/${encodeURIComponent(peerId)}`,
+            { signal: controller.signal },
           );
           if (!resp.ok) return;
           const body = await resp.json() as Record<string, unknown> | null;
@@ -2568,44 +2678,10 @@ export function registerPiChatHandlers({
           });
         } catch {
           // Ignore — peer simply has no metering info
+        } finally {
+          clearTimeout(timeout);
         }
       }));
-
-      // Static imports at the top of the file — see note on the
-      // `discoverChatServiceCatalog` read for why these must not be
-      // dynamic in packaged Windows builds.
-      let discoveredPeersMap: Record<string, BuyerStateDiscoveredPeer> = {};
-      try {
-        const raw = await readFile(DEFAULT_BUYER_STATE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        const arr = Array.isArray(parsed.discoveredPeers) ? parsed.discoveredPeers : [];
-        for (const p of arr) {
-          if (p && typeof p === 'object' && typeof (p as { peerId?: unknown }).peerId === 'string') {
-            const rec = p as Record<string, unknown>;
-            const peerId = rec.peerId as string;
-            discoveredPeersMap[peerId] = {
-              onChainAgentId: typeof rec.onChainAgentId === 'number' ? rec.onChainAgentId : null,
-              onChainStakeUsdcMicros: typeof rec.onChainStakeUsdcMicros === 'number' ? rec.onChainStakeUsdcMicros : null,
-              onChainChannelCount: typeof rec.onChainChannelCount === 'number' ? rec.onChainChannelCount : null,
-              onChainGhostCount: typeof rec.onChainGhostCount === 'number' ? rec.onChainGhostCount : null,
-              onChainTotalVolumeUsdcMicros: typeof rec.onChainTotalVolumeUsdcMicros === 'number' ? rec.onChainTotalVolumeUsdcMicros : null,
-              onChainLastSettledAtSec: typeof rec.onChainLastSettledAtSec === 'number' ? rec.onChainLastSettledAtSec : null,
-              onChainReputationScore: typeof rec.onChainReputationScore === 'number' ? rec.onChainReputationScore : null,
-              onChainTrustScore: typeof rec.onChainTrustScore === 'number' ? rec.onChainTrustScore : null,
-              onChainSybilRisk: typeof rec.onChainSybilRisk === 'number' ? rec.onChainSybilRisk : null,
-              onChainSybilFlags: Array.isArray(rec.onChainSybilFlags)
-                ? rec.onChainSybilFlags.filter((f: unknown): f is string => typeof f === 'string')
-                : [],
-              sellerContract: typeof rec.sellerContract === 'string' ? rec.sellerContract : undefined,
-              providerPricing: rec.providerPricing as Record<string, {
-                services?: Record<string, { cachedInputUsdPerMillion?: number }>
-              }> | undefined,
-            };
-          }
-        }
-      } catch {
-        // No state file yet
-      }
 
       // Network-wide stats from @antseed/network-stats. On non-mainnet chains and on any
       // failure this returns an empty map and buildDiscoverRows falls back to local stats.

@@ -88,6 +88,12 @@ import {
 } from "./reputation/on-chain-reputation.js";
 
 export type { Provider, ProviderStreamCallbacks };
+
+export type PeerKeepaliveTelemetry = {
+  peerId: string;
+  latencyMs: number | null;
+  running: boolean;
+};
 export type { Router };
 export type { BuyerPaymentConfig };
 export type { SellerSessionSnapshot };
@@ -944,6 +950,22 @@ export class AntseedNode extends EventEmitter {
     return this._buyerHandler.sendRequest(peer, req, callbacks, options);
   }
 
+  getPeerKeepaliveTelemetry(peerId: string): PeerKeepaliveTelemetry {
+    const keepalive = this._keepalives.get(peerId as PeerId);
+    if (!keepalive) {
+      return {
+        peerId,
+        latencyMs: null,
+        running: false,
+      };
+    }
+    return {
+      peerId,
+      latencyMs: keepalive.latencyMs > 0 ? keepalive.latencyMs : null,
+      running: keepalive.isRunning,
+    };
+  }
+
   private _createDHTConfig(port: number, bootstrapNodes: Array<{ host: string; port: number }>): DHTNodeConfig {
     return {
       peerId: this._identity!.peerId,
@@ -982,7 +1004,11 @@ export class AntseedNode extends EventEmitter {
           continue;
         }
         if (frame.type === MessageType.Pong) {
-          this._keepalives.get(peerId)?.handlePong(frame.payload);
+          const keepalive = this._keepalives.get(peerId);
+          if (keepalive) {
+            keepalive.handlePong(frame.payload);
+            this.emit("keepalive:pong", this.getPeerKeepaliveTelemetry(peerId));
+          }
           continue;
         }
         if (paymentMux && PaymentMux.isPaymentMessage(frame.type)) {

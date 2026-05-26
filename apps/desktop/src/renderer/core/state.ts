@@ -133,6 +133,9 @@ export type DiscoverRow = {
   networkInputTokens: string | null;
   networkOutputTokens: string | null;
 
+  // Peer latency, measured by @antseed/node keepalive frames.
+  latencyMs: number | null;
+
   // Derived — encoded selection for existing chat open path
   selectionValue: string;
 };
