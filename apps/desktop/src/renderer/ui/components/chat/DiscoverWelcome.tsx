@@ -15,9 +15,11 @@ import {
   formatCategoryLabel,
 } from './discover-filter-util';
 import { DiscoverFilters } from './DiscoverFilters';
-import { getPeerGradient, getPeerDisplayName, formatPerMillionPrice, getTagTint } from '../../../core/peer-utils';
+import { getPeerGradient, getPeerDisplayName, getTagTint } from '../../../core/peer-utils';
 import { getKnownProxy, type KnownProxy } from '../../../core/known-proxies';
 import { InfoTooltip } from '../InfoTooltip';
+import { groupByCanonical, canonicalizeModelId } from '../../../core/canonical-model';
+import { computeForecast, type RoutingPriority } from '../../../core/forecast';
 import styles from './DiscoverWelcome.module.scss';
 
 /**
@@ -27,7 +29,6 @@ import styles from './DiscoverWelcome.module.scss';
  * tooltip lists the hidden tags.
  */
 const MAX_VISIBLE_CARD_TAGS = 4;
-const LOW_REPUTATION_SCORE_THRESHOLD = 50;
 
 const SORT_OPTIONS: Array<{ key: DiscoverSortKey; label: string }> = [
   { key: 'reputationDesc',  label: 'Best reputation' },
@@ -52,7 +53,6 @@ type CardItem = {
   peerId: string;
   value: string;
   provider: string;
-  providerCount: number;
   tags: string[];
   gradient: string;
   description: string;
@@ -65,38 +65,29 @@ type CardItem = {
   inputUsdPerMillion: number | null;
   outputUsdPerMillion: number | null;
   cachedInputUsdPerMillion: number | null;
+  /**
+   * Retained for the issue-6 details drawer — not rendered on the card surface.
+   */
   reputationScore: number | null; // 0-100 displayed score (sybil-attenuated)
+  /** Retained for drawer. */
   channelCount: number;       // on-chain, from AntseedChannels.getAgentStats
+  /** Retained for drawer. */
   volumeUsdc: number;         // settled on-chain USDC volume
+  /** Retained for drawer. */
   sybilRisk: number | null;
+  /** Retained for drawer. */
   sybilFlags: string[];
+  /** Retained for drawer. */
   lifetimeRequests: number;   // network-wide (mainnet) or local buyer total (fallback)
+  /** Retained for drawer. */
   lifetimeTokens: number;     // network-wide (mainnet) or local buyer total (fallback)
   latencyMs: number | null;
+  /**
+   * All DiscoverRows in this canonical-model group.
+   * The issue-6 details drawer will iterate these to show per-provider stats.
+   */
+  groupedRows: DiscoverRow[];
 };
-
-const SYBIL_WARN_THRESHOLD = 0.30;
-
-const SYBIL_FLAG_LABELS: Record<string, string> = {
-  narrow_custom:   'narrow custom service',
-  burn_rate:       'high channel burn rate',
-  subfloor_ticket: 'sub-floor avg ticket',
-  young_high_vol:  'young agent, high volume',
-};
-
-function formatSybilFlag(flag: string): string {
-  return SYBIL_FLAG_LABELS[flag] ?? flag.replace(/_/g, ' ');
-}
-
-function sybilHasSignals(item: { sybilFlags: string[] }): boolean {
-  return item.sybilFlags.length > 0;
-}
-
-function sybilIsAlarming(item: { sybilRisk: number | null; sybilFlags: string[] }): boolean {
-  return sybilHasSignals(item)
-    && typeof item.sybilRisk === 'number'
-    && item.sybilRisk >= SYBIL_WARN_THRESHOLD;
-}
 
 /* ── Normalize service name for display (dashes → spaces) ─────────────── */
 
@@ -140,7 +131,6 @@ function buildCards(options: ChatServiceOptionEntry[]): CardItem[] {
       peerId: opt.peerId || '',
       value: opt.value,
       provider: opt.provider,
-      providerCount: opt.count,
       tags,
       gradient: getPeerGradient(opt.peerId || opt.peerLabel || opt.provider || opt.id),
       description: opt.description || generateDescription(opt.id, opt.categories, opt.peerLabel || opt.provider),
@@ -160,6 +150,7 @@ function buildCards(options: ChatServiceOptionEntry[]): CardItem[] {
       lifetimeRequests: 0,
       lifetimeTokens: 0,
       latencyMs: null,
+      groupedRows: [],
     };
   });
 }
@@ -183,86 +174,94 @@ function pickTokens(row: DiscoverRow): number {
   return row.lifetimeInputTokens + row.lifetimeOutputTokens;
 }
 
-function buildCardsFromRows(rows: DiscoverRow[]): CardItem[] {
-  const seen = new Set<string>();
+function buildCardsFromRows(rows: DiscoverRow[], priority: RoutingPriority): CardItem[] {
+  // Group rows by canonical model key — one card per canonical model.
+  const groups = groupByCanonical(rows);
   const out: CardItem[] = [];
-  for (const row of rows) {
-    const key = `${row.provider}\u0001${row.serviceId}\u0001${row.peerId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const baseTags = row.categories;
+
+  for (const [canonicalKey, groupRows] of groups) {
+    // Representative row: first in group (used for display metadata).
+    const rep = groupRows[0];
+    const baseTags = rep.categories;
     const tags = baseTags.some((t) => t.toLowerCase() === 'anon')
       ? baseTags
       : ['anon', ...baseTags];
-    const rawName = row.serviceLabel || row.serviceId;
-    const peerLabel = row.peerLabel || '';
+
+    // Use canonical key to produce a clean display name (e.g. "gpt-4o" not "openai/gpt-4o").
+    const rawName = rep.serviceLabel && canonicalizeModelId(rep.serviceLabel) === canonicalKey
+      ? rep.serviceLabel
+      : canonicalKey;
+    const peerLabel = rep.peerLabel || '';
+
+    // Aggregate stats from all rows for drawer use.
+    const totalVolumeUsdc = groupRows.reduce((sum, r) => sum + Number(r.onChainTotalVolumeUsdc) / 1_000_000, 0);
+    const totalRequests = groupRows.reduce((sum, r) => sum + pickRequests(r), 0);
+    const totalTokens = groupRows.reduce((sum, r) => sum + pickTokens(r), 0);
+    const totalChannels = groupRows.reduce((sum, r) => sum + r.onChainActiveChannelCount, 0);
+
+    // Pick a representative provider name for display in the footer.
+    const providerNames = [...new Set(groupRows.map((r) => r.peerLabel || r.provider).filter(Boolean))];
+    const representativeLabel = providerNames[0] ?? peerLabel;
+
+    // Gradient based on representative peer.
+    const gradient = getPeerGradient(rep.peerId || peerLabel || rep.provider || rep.serviceId);
+
+    // forecast is computed at render time from groupedRows + priority; no need to cache it here.
+
+    // Fire with no peerId so buyer-proxy routing applies the active priority naturally.
     out.push({
       name: rawName,
-      canonicalName: row.serviceId,
+      canonicalName: canonicalKey,
       displayName: normalizeServiceName(rawName),
-      peerLabel,
-      peerId: row.peerId,
-      value: row.selectionValue,
-      provider: row.provider,
-      providerCount: 1,
+      peerLabel: representativeLabel,
+      peerId: '', // let routing pick the winner under active priority
+      value: rep.selectionValue,
+      provider: rep.provider,
       tags,
-      gradient: getPeerGradient(row.peerId || peerLabel || row.provider || row.serviceId),
-      description: generateDescription(row.serviceId, row.categories, peerLabel || row.provider),
-      knownProxy: getKnownProxy(row.sellerContract),
-      inputUsdPerMillion: row.inputUsdPerMillion,
-      outputUsdPerMillion: row.outputUsdPerMillion,
-      cachedInputUsdPerMillion: row.cachedInputUsdPerMillion,
-      reputationScore: row.onChainReputationScore,
-      channelCount: row.onChainActiveChannelCount,
-      volumeUsdc: Number(row.onChainTotalVolumeUsdc) / 1_000_000,
-      sybilRisk: row.onChainSybilRisk,
-      sybilFlags: row.onChainSybilFlags,
-      lifetimeRequests: pickRequests(row),
-      lifetimeTokens: pickTokens(row),
-      latencyMs: row.latencyMs,
+      gradient,
+      description: generateDescription(rep.serviceId, rep.categories, representativeLabel || rep.provider),
+      knownProxy: getKnownProxy(rep.sellerContract),
+      inputUsdPerMillion: rep.inputUsdPerMillion,
+      outputUsdPerMillion: rep.outputUsdPerMillion,
+      cachedInputUsdPerMillion: rep.cachedInputUsdPerMillion,
+      // Drawer fields — retained but not rendered on card surface.
+      reputationScore: rep.onChainReputationScore,
+      channelCount: totalChannels,
+      volumeUsdc: totalVolumeUsdc,
+      sybilRisk: rep.onChainSybilRisk,
+      sybilFlags: rep.onChainSybilFlags,
+      lifetimeRequests: totalRequests,
+      lifetimeTokens: totalTokens,
+      latencyMs: rep.latencyMs,
+      groupedRows: groupRows,
     });
   }
   return out;
 }
 
-/* ── Compact number formatter (12.3k / 1.2M) ─────────────────────────── */
+/* ── Forecast string formatter ───────────────────────────────────────── */
 
-function formatCompact(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(Math.floor(n));
-}
-
-function formatVolumeUsdc(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`;
-  if (n >= 100) return n.toFixed(0);
-  if (n >= 10) return n.toFixed(1).replace(/\.0$/, '');
-  return n.toFixed(2).replace(/\.00$/, '');
-}
-
-function formatLatency(latencyMs: number | null): string {
-  if (latencyMs == null || !Number.isFinite(latencyMs)) return 'No latency';
-  return `${Math.max(0, Math.round(latencyMs))} ms`;
-}
-
-function isLowReputation(score: number | null): boolean {
-  return typeof score === 'number' && Number.isFinite(score) && score < LOW_REPUTATION_SCORE_THRESHOLD;
-}
-
-function formatReputationScore(score: number | null): string {
-  if (score == null || !Number.isFinite(score)) return '—';
-  return (score / 10).toFixed(1);
-}
-
-function formatReputationTooltip(item: CardItem): { avgChannelUsdc: string } {
-  const avg = item.channelCount > 0 ? item.volumeUsdc / item.channelCount : 0;
-  return {
-    avgChannelUsdc: formatVolumeUsdc(avg),
-  };
+/**
+ * Format `~$X/1k · ~Xms · N providers`, suppressing segments that are null.
+ * `providerCount=1` suppresses the providers segment (single provider is implicit).
+ */
+function formatForecastLine(
+  pricePer1kUsd: number | null,
+  latencyMs: number | null,
+  providerCount: number,
+): string {
+  const segments: string[] = [];
+  if (pricePer1kUsd !== null && Number.isFinite(pricePer1kUsd)) {
+    // Show 3 significant digits: format as e.g. ~$0.003/1k or ~$1.50/1k
+    segments.push(`~$${pricePer1kUsd < 0.01 ? pricePer1kUsd.toFixed(4) : pricePer1kUsd.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}/1k`);
+  }
+  if (latencyMs !== null && Number.isFinite(latencyMs)) {
+    segments.push(`~${Math.max(0, Math.round(latencyMs))}ms`);
+  }
+  if (providerCount > 1) {
+    segments.push(`${providerCount} providers`);
+  }
+  return segments.join(' · ');
 }
 
 /* ── Search matcher ──────────────────────────────────────────────────── */
@@ -287,16 +286,22 @@ function SkeletonCard() {
   return (
     <div className={styles.card}>
       <div className={styles.cardBody}>
+        {/* Tags row */}
         <div className={styles.cardTags}>
           <Skeleton width={52} height={18} borderRadius={24} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
           <Skeleton width={42} height={18} borderRadius={24} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
         </div>
+        {/* Model name */}
         <Skeleton width="65%" height={16} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
+        {/* Description */}
         <Skeleton width="90%" height={12} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
         <Skeleton width="55%" height={12} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
       </div>
       <div className={styles.cardFooter}>
-        <Skeleton width={90} height={12} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
+        {/* Provider row */}
+        <Skeleton width={110} height={12} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
+        {/* Forecast line */}
+        <Skeleton width={150} height={11} baseColor={skeletonBaseColor} highlightColor={skeletonHighlightColor} />
       </div>
     </div>
   );
@@ -372,6 +377,10 @@ function buildPaginationTokens(page: number, totalPages: number): PaginationToke
 export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWelcomeProps) {
   const snap = useUiSnapshot();
   const rows = snap.discoverRows;
+  // When the routing priority is unset, default to 'most-trusted' for forecast computation.
+  const routingPriority: RoutingPriority = snap.chatRoutingPriorityIsUnset
+    ? 'most-trusted'
+    : snap.chatRoutingPriority;
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(() => estimatePageSize());
@@ -414,10 +423,10 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
   const hasNetworkData = serviceOptions.length > 0 || rows.length > 0;
   const cards = useMemo(() => {
     if (rows.length > 0) {
-      return buildCardsFromRows(filterState.sortedRows);
+      return buildCardsFromRows(filterState.sortedRows, routingPriority);
     }
     return serviceOptions.length > 0 ? buildCards(serviceOptions) : [];
-  }, [rows.length, filterState.sortedRows, serviceOptions]);
+  }, [rows.length, filterState.sortedRows, serviceOptions, routingPriority]);
 
   const filtered = useMemo(
     () => cards.filter((c) => matchesSearch(c, filterState.search)),
@@ -530,8 +539,9 @@ export function DiscoverWelcome({ serviceOptions, onStartChatting }: DiscoverWel
               <div className={styles.cardGrid} style={{ '--discover-columns': Math.max(1, Math.ceil(Math.sqrt(pageSize))) } as CSSProperties}>
                 {paged.map((item) => (
                   <Card
-                    key={item.value || item.name}
+                    key={item.canonicalName || item.value || item.name}
                     item={item}
+                    priority={routingPriority}
                     onClick={handleClick}
                   />
                 ))}
@@ -640,28 +650,29 @@ function Pagination({
 
 function Card({
   item,
+  priority,
   onClick,
 }: {
   item: CardItem;
+  priority: RoutingPriority;
   onClick: (v: string, peerId: string) => void;
 }) {
-  const providerName = (item.peerLabel ? getPeerDisplayName(item.peerLabel) : '') || item.provider || 'Peer';
   const [copied, setCopied] = useState(false);
-  const hasInput = item.inputUsdPerMillion != null;
-  const hasOutput = item.outputUsdPerMillion != null;
-  const hasCachedInput = item.cachedInputUsdPerMillion != null;
-  const isFree = hasInput
-    && hasOutput
-    && item.inputUsdPerMillion === 0
-    && item.outputUsdPerMillion === 0
-    && (!hasCachedInput || item.cachedInputUsdPerMillion === 0);
-  const lowReputation = isLowReputation(item.reputationScore);
-  const reputationTooltip = formatReputationTooltip(item);
-  const latencyLabel = formatLatency(item.latencyMs);
-  const hasLatency = item.latencyMs != null;
-  const latencyTitle = hasLatency
-    ? `Keepalive latency: ${latencyLabel}`
-    : 'No latency yet';
+
+  // Compute forecast from the full grouped rows so providerCount is accurate.
+  const forecast = useMemo(
+    () => computeForecast(item.groupedRows.length > 0 ? item.groupedRows : [], priority),
+    [item.groupedRows, priority],
+  );
+
+  const providerCount = forecast.providerCount;
+  const forecastLine = formatForecastLine(forecast.pricePer1kUsd, forecast.latencyMs, providerCount);
+
+  // Provider display: single representative or "N providers".
+  const providerName = (item.peerLabel ? getPeerDisplayName(item.peerLabel) : '') || item.provider || 'Peer';
+  const providerDisplay = providerCount > 1
+    ? `${providerName} +${providerCount - 1}`
+    : providerName;
 
   useEffect(() => {
     if (!copied) return undefined;
@@ -670,7 +681,8 @@ function Card({
   }, [copied]);
 
   const serviceKey = item.canonicalName || item.name;
-  const copyValue = `${item.peerId} ${serviceKey}`.trim();
+  // For copy: use canonical key (peerId is empty for grouped cards).
+  const copyValue = serviceKey.trim();
 
   const handleCopyIdentifiers = useCallback((event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -692,6 +704,7 @@ function Card({
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(item.value, item.peerId); } }}
     >
       <div className={styles.cardBody}>
+        {/* Tags */}
         <div className={styles.cardTags}>
           {item.tags.slice(0, MAX_VISIBLE_CARD_TAGS).map((t) => (
             <span key={t} className={styles.tag} style={getTagTint(t)}>{formatCategoryLabel(t)}</span>
@@ -712,6 +725,8 @@ function Card({
             </span>
           )}
         </div>
+
+        {/* Model name (canonical key, nicely formatted) */}
         <div className={styles.cardNameRow}>
           <div className={styles.cardName} title={serviceKey}>{item.displayName}</div>
           <button
@@ -719,121 +734,53 @@ function Card({
             className={`${styles.copyIconButton}${copied ? ` ${styles.copyIconButtonCopied}` : ''}`}
             onClick={handleCopyIdentifiers}
             onKeyDown={(e) => e.stopPropagation()}
-            aria-label={copied ? `Copied ${copyValue}` : `Copy peer ID and service key ${copyValue}`}
-            title={copied ? 'Copied peer ID and service key' : `Copy peer ID and service key: ${copyValue}`}
+            aria-label={copied ? `Copied ${copyValue}` : `Copy service key ${copyValue}`}
+            title={copied ? 'Copied service key' : `Copy service key: ${copyValue}`}
           >
             <HugeiconsIcon icon={copied ? Tick02Icon : Copy01Icon} size={13} strokeWidth={1.7} />
           </button>
         </div>
-        <div className={styles.cardDesc}>{item.description}</div>
-        <div className={styles.cardPricing}>
-          {isFree ? (
-            <span className={styles.pricingFree}>Free</span>
-          ) : (
-            <>
-              {(hasInput || hasCachedInput) && (
-                <span className={styles.pricingInputGroup}>
-                  {hasInput && <span>{formatPerMillionPrice(item.inputUsdPerMillion!)} input tokens</span>}
-                  {hasCachedInput && (
-                    <span className={styles.pricingCached}>
-                      {formatPerMillionPrice(item.cachedInputUsdPerMillion!)} cached input
-                    </span>
-                  )}
-                </span>
-              )}
-              {hasOutput && (hasInput || hasCachedInput) && <span className={styles.pricingDot} />}
-              {hasOutput && <span>{formatPerMillionPrice(item.outputUsdPerMillion!)} output tokens</span>}
-            </>
-          )}
-        </div>
+
+        {/* Optional one-line description */}
+        {item.description && (
+          <div className={styles.cardDesc}>{item.description}</div>
+        )}
       </div>
 
+      {/* Footer: provider attribution + forecast */}
       <div className={styles.cardFooter}>
-        <div className={styles.cardFooterTop}>
-          <div className={styles.cardProvider}>
-            <span className={styles.cardProviderBy}>By</span>
-            <ProviderAvatar name={providerName} gradient={item.gradient} />
-            <span className={styles.cardProviderName}>{providerName}</span>
-            {item.knownProxy && (
-              <InfoTooltip
-                align="left"
-                content={(
-                  <>
-                    <strong>{item.knownProxy.label}</strong>
-                    <span>{item.knownProxy.description}</span>
-                  </>
-                )}
-              >
-                <span
-                  className={styles.proxyBadge}
-                  tabIndex={0}
-                  role="button"
-                  /* The label + description live in the popover; the surface only shows
-                     the icon, but screen readers still get the full sentence. */
-                  aria-label={`${item.knownProxy.label} — ${item.knownProxy.description}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                >
-                  <HugeiconsIcon icon={ContractsIcon} size={11} strokeWidth={1.8} />
-                </span>
-              </InfoTooltip>
-            )}
-          </div>
-          <div className={styles.cardFooterMetrics}>
-            <span
-              className={`${styles.cardLatencyBadge}${hasLatency ? ` ${styles.cardLatencyBadgeOk}` : ''}`}
-              title={latencyTitle}
-              aria-label={latencyTitle}
-            >
-              {latencyLabel}
-            </span>
-            <span>{formatCompact(item.channelCount)} session{item.channelCount === 1 ? '' : 's'}</span>
+        <div className={styles.cardProvider}>
+          <span className={styles.cardProviderBy}>By</span>
+          <ProviderAvatar name={providerName} gradient={item.gradient} />
+          <span className={styles.cardProviderName}>{providerDisplay}</span>
+          {item.knownProxy && (
             <InfoTooltip
-              align="right"
+              align="left"
               content={(
                 <>
-                  <strong>On-chain reputation score</strong>
-                  <span>Settled volume: {formatVolumeUsdc(item.volumeUsdc)} USDC.</span>
-                  <span>{formatCompact(item.channelCount)} settled session{item.channelCount === 1 ? '' : 's'}.</span>
-                  <span>Avg channel value: {reputationTooltip.avgChannelUsdc} USDC.</span>
-                  {sybilHasSignals(item) && (
-                    <span>
-                      ⚠ Sybil risk signals: {item.sybilFlags.map(formatSybilFlag).join(', ')}.
-                    </span>
-                  )}
-                  <span>Score combines settled sessions, volume, recency, stake, and sybil risk.</span>
+                  <strong>{item.knownProxy.label}</strong>
+                  <span>{item.knownProxy.description}</span>
                 </>
               )}
             >
-              <span className={`${styles.cardScoreBadge}${lowReputation ? ` ${styles.cardScoreBadgeWarn}` : ''}`} tabIndex={0}>
-                {formatReputationScore(item.reputationScore)}
-                <span className={styles.cardScoreStar} aria-hidden="true">★</span>
-                {lowReputation && <span className={styles.cardScoreLowText}>Low</span>}
+              <span
+                className={styles.proxyBadge}
+                tabIndex={0}
+                role="button"
+                aria-label={`${item.knownProxy.label} — ${item.knownProxy.description}`}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <HugeiconsIcon icon={ContractsIcon} size={11} strokeWidth={1.8} />
               </span>
             </InfoTooltip>
-          </div>
-        </div>
-        <div className={`${styles.cardStats}${lowReputation || sybilHasSignals(item) ? ` ${styles.cardStatsWarning}` : ''}`}>
-          {sybilIsAlarming(item) ? (
-            <span>⚠ Suspected wash activity: {item.sybilFlags.map(formatSybilFlag).join(', ')}</span>
-          ) : sybilHasSignals(item) ? (
-            <span>⚠ Sybil risk signals: {item.sybilFlags.map(formatSybilFlag).join(', ')}</span>
-          ) : lowReputation ? (
-            <span>Low reputation: limited on-chain history</span>
-          ) : (
-            <>
-              {item.providerCount > 1 && (
-                <span>{item.providerCount} providers</span>
-              )}
-              {item.providerCount > 1 && <span className={styles.statsDot} />}
-              <span>{formatVolumeUsdc(item.volumeUsdc)} USDC volume</span>
-              <span className={styles.statsDot} />
-              <span>{formatCompact(item.lifetimeRequests)} request{item.lifetimeRequests === 1 ? '' : 's'}</span>
-              <span className={styles.statsDot} />
-              <span>{formatCompact(item.lifetimeTokens)} token{item.lifetimeTokens === 1 ? '' : 's'}</span>
-            </>
           )}
         </div>
+        {forecastLine && (
+          <div className={styles.cardForecast} aria-label={`Forecast: ${forecastLine}`}>
+            {forecastLine}
+          </div>
+        )}
       </div>
     </div>
   );
