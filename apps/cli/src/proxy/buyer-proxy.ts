@@ -49,6 +49,10 @@ import {
   type PeerProtocolRoutePlan,
 } from './routing.js'
 import {
+  sortPeersByPriority,
+  type RoutingPriority,
+} from './routing-priority.js'
+import {
   computeResponseTelemetry,
   attachAntseedTelemetryHeaders,
   attachStreamingAntseedHeaders,
@@ -1061,7 +1065,15 @@ export class BuyerProxy {
     log(`Routing: protocol=${requestProtocol ?? 'null'} service=${requestedService ?? 'null'}`)
     const explicitProvider = getExplicitProviderOverride(serializedReq)
     const explicitPeerId = getExplicitPeerIdOverride(serializedReq, effectivePinnedPeer ?? undefined)
-    log(`Routing hints: provider=${explicitProvider ?? 'auto'} pin-peer=${explicitPeerId ?? 'none'}`)
+    // Read optional routing priority from the per-request header. The desktop
+    // app sends this header so the proxy can apply the correct sort order when
+    // multiple candidates are eligible. Defaults to 'most-trusted' when absent.
+    const rawPriorityHeader = serializedReq.headers['x-antseed-routing-priority']?.trim().toLowerCase()
+    const routingPriority: RoutingPriority =
+      rawPriorityHeader === 'cheapest' || rawPriorityHeader === 'fastest'
+        ? rawPriorityHeader
+        : 'most-trusted'
+    log(`Routing hints: provider=${explicitProvider ?? 'auto'} pin-peer=${explicitPeerId ?? 'none'} priority=${routingPriority}`)
 
     // Auto peer selection is disabled. Every request MUST target a specific
     // peer, either via the per-request `x-antseed-pin-peer` header or via a
@@ -1118,13 +1130,24 @@ export class BuyerProxy {
       return match ? [match] : sources
     }
 
-    const selectPeers = (candidateSources: PeerInfo[]): CandidatePeerRouteSelection => selectCandidatePeersForRouting(
-      narrowToPinned(candidateSources),
-      requestProtocol,
-      requestedService,
-      explicitProvider,
-      'lenient',
-    )
+    const selectPeers = (candidateSources: PeerInfo[]): CandidatePeerRouteSelection => {
+      const raw = selectCandidatePeersForRouting(
+        narrowToPinned(candidateSources),
+        requestProtocol,
+        requestedService,
+        explicitProvider,
+        'lenient',
+      )
+      // Sort candidates by routing priority so that the first eligible peer
+      // reflects the caller's preference. For the common pinned-peer path
+      // there is only one candidate and the sort is a no-op. When multiple
+      // candidates are eligible (e.g. future auto-routing) the priority header
+      // ensures the cheapest / fastest / most-trusted peer is tried first.
+      return {
+        ...raw,
+        candidatePeers: sortPeersByPriority(raw.candidatePeers, routingPriority),
+      }
+    }
 
     let hasForcedRefresh = false
     const refreshPeerSelection = async (reason: string): Promise<void> => {

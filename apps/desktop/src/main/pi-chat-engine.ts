@@ -659,6 +659,79 @@ export function invalidateOnChainEnrichmentCache(): void {
   // The desktop process intentionally performs no staking/channel RPC here.
 }
 
+/**
+ * Given a set of catalog entries for a service and the buyer-state peer data,
+ * return the peerId of the highest-ranked peer according to `priority`.
+ *
+ * This function is the desktop-side routing decision: it picks which peer to
+ * pin for a new request when no peer is already bound to the conversation.
+ * The ranking mirrors `sortPeersByPriority` in the CLI proxy, using whichever
+ * signals are available in the buyer state file.
+ */
+function selectPeerIdByPriority(
+  catalogEntries: ChatServiceCatalogEntry[],
+  buyerStatePeers: Record<string, BuyerStateDiscoveredPeer>,
+  priority: RoutingPriority,
+): string | null {
+  // Build a sortable list of (peerId, score) pairs for the entries that have
+  // a peerId. Multiple catalog rows for the same peer (one per provider) are
+  // deduplicated — we rank the peer, not individual rows.
+  const seen = new Set<string>();
+  const candidates: Array<{ peerId: string; entry: ChatServiceCatalogEntry }> = [];
+  for (const entry of catalogEntries) {
+    if (!entry.peerId || seen.has(entry.peerId)) continue;
+    seen.add(entry.peerId);
+    candidates.push({ peerId: entry.peerId, entry });
+  }
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0]!.peerId;
+
+  // Sort by priority, highest-ranked first.
+  candidates.sort((a, b) => {
+    const stateA = buyerStatePeers[a.peerId];
+    const stateB = buyerStatePeers[b.peerId];
+
+    if (priority === 'cheapest') {
+      const priceA = (a.entry.inputUsdPerMillion ?? Infinity)
+        + (a.entry.outputUsdPerMillion ?? Infinity);
+      const priceB = (b.entry.inputUsdPerMillion ?? Infinity)
+        + (b.entry.outputUsdPerMillion ?? Infinity);
+      return priceA - priceB;
+    }
+
+    if (priority === 'fastest') {
+      const latA = stateA?.keepaliveLatencyMs ?? Infinity;
+      const latB = stateB?.keepaliveLatencyMs ?? Infinity;
+      return latA - latB;
+    }
+
+    // most-trusted: composite on-chain score (equal weights, normalised to [0,1])
+    const STAKE_MAX  = 100_000_000;
+    const VOLUME_MAX = 1_000_000_000;
+    const REP_MAX    = 100;
+    const norm = (v: number | null | undefined, max: number): number =>
+      max > 0 ? Math.min((v ?? 0) / max, 1) : 0;
+    const scoreA = stateA
+      ? (norm(stateA.onChainStakeUsdcMicros, STAKE_MAX)
+        + norm(stateA.onChainTrustScore, 1)
+        + (1 - norm(stateA.onChainSybilRisk ?? 1, 1))
+        + norm(stateA.onChainTotalVolumeUsdcMicros, VOLUME_MAX)
+        + norm(stateA.onChainReputationScore, REP_MAX)) / 5
+      : 0;
+    const scoreB = stateB
+      ? (norm(stateB.onChainStakeUsdcMicros, STAKE_MAX)
+        + norm(stateB.onChainTrustScore, 1)
+        + (1 - norm(stateB.onChainSybilRisk ?? 1, 1))
+        + norm(stateB.onChainTotalVolumeUsdcMicros, VOLUME_MAX)
+        + norm(stateB.onChainReputationScore, REP_MAX)) / 5
+      : 0;
+    return scoreB - scoreA; // higher score first
+  });
+
+  return candidates[0]?.peerId ?? null;
+}
+
 async function buildDiscoverRows(
   catalog: ChatServiceCatalogEntry[],
   peerStats: Map<string, {
@@ -1070,6 +1143,7 @@ function makeProxyService(
   preferredPeerId?: string | null,
   spendingAuth?: string | null,
   supportsMultimodal: boolean = false,
+  routingPriority?: RoutingPriority,
 ): Model<any> {
   // The buyer proxy resolves the route plan from the pinned peer + the
   // service ID in the request body, so we don't need to send
@@ -1078,6 +1152,7 @@ function makeProxyService(
   const headers: Record<string, string> = {};
   if (preferredPeerId) headers['x-antseed-pin-peer'] = preferredPeerId;
   if (spendingAuth) headers['x-antseed-spending-auth'] = spendingAuth;
+  if (routingPriority) headers['x-antseed-routing-priority'] = routingPriority;
 
   // The OpenAI SDK appends API paths (e.g. /responses, /chat/completions)
   // to baseUrl, so include /v1 to match the buyer proxy's expected paths.
@@ -2001,7 +2076,26 @@ export function registerPiChatHandlers({
     const serviceId = normalizeServiceId(serviceOverride || context.model?.modelId);
     const persistedPeer = extractPeerFromEntries(sessionManager);
     const peerOverrideId = normalizePeerId(peerOverride) ?? null;
-    const preferredPeerId = peerOverrideId ?? preferredPeerByConversationId.get(conversationId) ?? persistedPeer?.peerId ?? null;
+    // Read the routing priority stored for this conversation so it can influence
+    // peer selection when no peer is already pinned.
+    const sessionRoutingPriority = resolveLatestRoutingPriority(
+      sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>,
+    );
+    let preferredPeerId = peerOverrideId ?? preferredPeerByConversationId.get(conversationId) ?? persistedPeer?.peerId ?? null;
+    // When no peer is pinned yet, use the routing priority to pick the
+    // highest-ranked peer from the current service catalog. This is the
+    // key wiring: changing the chip re-routes the very next prompt because
+    // this path runs on every request before the peer is locked in.
+    if (!preferredPeerId && serviceId) {
+      const normalizedSvc = serviceId.trim().toLowerCase();
+      const entriesForService = lastServiceCatalogEntries.filter(
+        (entry) => entry.id.trim().toLowerCase() === normalizedSvc,
+      );
+      if (entriesForService.length > 0) {
+        const buyerStatePeers = await loadBuyerStateDiscoveredPeers();
+        preferredPeerId = selectPeerIdByPriority(entriesForService, buyerStatePeers, sessionRoutingPriority);
+      }
+    }
     if (preferredPeerId) {
       preferredPeerByConversationId.set(conversationId, preferredPeerId);
       if (peerOverrideId && persistedPeer?.peerId !== peerOverrideId) {
@@ -2052,6 +2146,7 @@ export function registerPiChatHandlers({
       preferredPeerId,
       null,
       supportsMultimodal,
+      sessionRoutingPriority,
     );
 
     const authStorage = AuthStorage.inMemory();
