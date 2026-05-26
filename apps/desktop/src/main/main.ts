@@ -332,6 +332,35 @@ async function stopPaymentsPortal(): Promise<void> {
   paymentsServer = null;
 }
 
+async function isHttpReachable(url: string, timeoutMs = 750): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+    });
+    return response.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolvePaymentsPortalBaseUrl(): Promise<string> {
+  const fastifyUrl = `${LOCALHOST_URL}:${PAYMENTS_PORT}`;
+  if (!isDev) return fastifyUrl;
+
+  const devUrl = process.env['ANTSEED_PAYMENTS_DEV_URL'] || 'http://localhost:5175';
+  if (await isHttpReachable(devUrl)) {
+    return devUrl;
+  }
+
+  console.warn(`[desktop] Payments dev server unavailable at ${devUrl}; opening ${fastifyUrl}`);
+  return fastifyUrl;
+}
+
 ipcMain.handle('payments:open-portal', async (_event, tab?: string) => {
   try {
     await startPaymentsPortal();
@@ -347,8 +376,7 @@ ipcMain.handle('payments:open-portal', async (_event, tab?: string) => {
     // In dev mode, open the Vite HMR dev server (which proxies /api to the Fastify port).
     // Set ANTSEED_PAYMENTS_DEV_URL to override (default: http://localhost:5175).
     // When dev mode is detected but the dev server is not reachable, we still fall back to the Fastify URL.
-    const devUrl = isDev ? (process.env['ANTSEED_PAYMENTS_DEV_URL'] || 'http://localhost:5175') : null;
-    const base = devUrl ?? `${LOCALHOST_URL}:${PAYMENTS_PORT}`;
+    const base = await resolvePaymentsPortalBaseUrl();
     const url = qs ? `${base}?${qs}` : base;
     const { default: open } = await import('open');
     await open(url);
