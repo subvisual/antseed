@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import {
   computeOnChainReputationScore,
   type AntseedNode,
+  type PeerKeepaliveTelemetry,
   type PeerInfo,
   type PeerMetadata,
   type RequestStreamResponseMetadata,
@@ -247,7 +248,10 @@ export function parsePersistedPeers(
     const lastReachedAt = typeof entry.lastReachedAt === 'number' && Number.isFinite(entry.lastReachedAt)
       ? entry.lastReachedAt
       : 0
-    // Keep if either DHT observation or successful transport contact is within window.
+    const keepaliveLatencyMs = typeof entry.keepaliveLatencyMs === 'number' && Number.isFinite(entry.keepaliveLatencyMs)
+      ? entry.keepaliveLatencyMs
+      : 0
+    // Keep if DHT observation or successful transport contact is within window.
     const freshnessAnchor = Math.max(lastSeen, lastReachedAt)
     if (freshnessAnchor <= 0 || nowMs - freshnessAnchor >= maxAgeMs) continue
 
@@ -257,6 +261,7 @@ export function parsePersistedPeers(
       providers,
     }
     if (lastReachedAt > 0) peer.lastReachedAt = lastReachedAt
+    if (keepaliveLatencyMs > 0) peer.keepaliveLatencyMs = keepaliveLatencyMs
     if (typeof entry.displayName === 'string') peer.displayName = entry.displayName
     if (typeof entry.publicAddress === 'string') peer.publicAddress = entry.publicAddress
     if (entry.providerPricing && typeof entry.providerPricing === 'object') {
@@ -388,13 +393,18 @@ export class BuyerProxy {
     })
 
     const eventNode = this._node as AntseedNode & {
-      on?: (event: 'peers:discovered', listener: (peers: PeerInfo[]) => void) => unknown
+      on?: (event: string, listener: (...args: unknown[]) => void) => unknown
     }
     if (typeof eventNode.on === 'function') {
-      eventNode.on('peers:discovered', (peers: PeerInfo[]) => {
-        if (peers.length === 0) return
-        log(`Background discovery found ${peers.length} peer(s)`)
-        this._replacePeers(peers)
+      eventNode.on('peers:discovered', (peers: unknown) => {
+        if (!Array.isArray(peers)) return
+        const typedPeers = peers as PeerInfo[]
+        if (typedPeers.length === 0) return
+        log(`Background discovery found ${typedPeers.length} peer(s)`)
+        this._replacePeers(typedPeers)
+      })
+      eventNode.on('keepalive:pong', (telemetry: unknown) => {
+        this._rememberKeepaliveTelemetry(telemetry as PeerKeepaliveTelemetry)
       })
     }
   }
@@ -565,15 +575,21 @@ export class BuyerProxy {
     const prevById = new Map(this._cachedPeers.map((p) => [p.peerId, p]))
     const now = Date.now()
 
-    // For peers re-observed in this scan, preserve `lastReachedAt` from the
-    // previous cache entry — the DHT announcement doesn't carry that field,
-    // and losing it on each refresh would defeat the carry-forward tracking.
+    // For peers re-observed in this scan, preserve local liveness telemetry from
+    // the previous cache entry — DHT announcements don't carry those fields.
     const merged: PeerInfo[] = incoming.map((peer) => {
       const prev = prevById.get(peer.peerId)
-      if (prev?.lastReachedAt && (!peer.lastReachedAt || prev.lastReachedAt > peer.lastReachedAt)) {
-        return { ...peer, lastReachedAt: prev.lastReachedAt }
+      if (!prev) {
+        return peer
       }
-      return peer
+      const next: PeerInfo = { ...peer }
+      if (prev.lastReachedAt && (!next.lastReachedAt || prev.lastReachedAt > next.lastReachedAt)) {
+        next.lastReachedAt = prev.lastReachedAt
+      }
+      if (prev.keepaliveLatencyMs !== undefined) {
+        next.keepaliveLatencyMs = prev.keepaliveLatencyMs
+      }
+      return next
     })
 
     // Carry forward previously known peers that are missing from this scan.
@@ -643,6 +659,7 @@ export class BuyerProxy {
         sellerContract: p.metadata?.sellerContract ?? null,
         lastSeen: p.lastSeen,
         lastReachedAt: p.lastReachedAt ?? null,
+        keepaliveLatencyMs: p.keepaliveLatencyMs ?? null,
       }
     })
     const onChainRefreshedAt = this._cachedPeers
@@ -720,6 +737,22 @@ export class BuyerProxy {
       cached.lastReachedAt = Date.now()
       this._persistPeersToState()
     }
+  }
+
+  private _rememberKeepaliveTelemetry(telemetry: PeerKeepaliveTelemetry): void {
+    if (!telemetry || typeof telemetry.peerId !== 'string') return
+    const cached = this._cachedPeers.find((p) => p.peerId === telemetry.peerId)
+    if (!cached) return
+
+    const latencyMs = typeof telemetry.latencyMs === 'number' && Number.isFinite(telemetry.latencyMs)
+      ? Math.max(0, Math.round(telemetry.latencyMs))
+      : null
+
+    if (latencyMs === null) return
+    cached.keepaliveLatencyMs = latencyMs
+    cached.lastReachedAt = Date.now()
+    this._peerFailures.delete(telemetry.peerId)
+    this._persistPeersToState()
   }
 
   private async _discoverPeersFromNetwork(): Promise<PeerInfo[]> {

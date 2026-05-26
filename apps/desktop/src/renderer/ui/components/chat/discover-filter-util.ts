@@ -4,6 +4,7 @@ export type DiscoverSortKey =
   | 'recentlyUsed'
   | 'serviceAsc' | 'serviceDesc'
   | 'priceAsc' | 'priceDesc'
+  | 'latencyAsc'
   | 'stakeDesc'
   | 'reputationDesc'
   | 'channelsDesc'
@@ -148,6 +149,11 @@ export function applySort(rows: DiscoverRow[], key: DiscoverSortKey, dir: 'asc' 
     if (inp == null && out == null) return Number.POSITIVE_INFINITY;
     return (inp ?? 0) + (out ?? 0);
   };
+  const latencyOf = (r: DiscoverRow): number => (
+    r.latencyMs != null
+      ? r.latencyMs
+      : Number.POSITIVE_INFINITY
+  );
   const cmp = (a: DiscoverRow, b: DiscoverRow): number => {
     switch (key) {
       case 'recentlyUsed': {
@@ -167,6 +173,8 @@ export function applySort(rows: DiscoverRow[], key: DiscoverSortKey, dir: 'asc' 
       case 'priceAsc':
       case 'priceDesc':
         return priceOf(a) - priceOf(b);
+      case 'latencyAsc':
+        return latencyOf(a) - latencyOf(b);
       case 'stakeDesc':
         return Number(BigInt(b.stakeUsdc) - BigInt(a.stakeUsdc));
       case 'reputationDesc': {

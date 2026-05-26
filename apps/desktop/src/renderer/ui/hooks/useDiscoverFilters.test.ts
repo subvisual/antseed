@@ -20,6 +20,7 @@ function mkRow(i: number, chat: boolean): DiscoverRow {
     onChainActiveChannelCount: 0, onChainGhostCount: 0, onChainTotalVolumeUsdc: '0', onChainLastSettledAt: 0,
     onChainReputationScore: null,
     networkRequests: null, networkInputTokens: null, networkOutputTokens: null,
+    latencyMs: null,
     selectionValue: '',
   };
 }

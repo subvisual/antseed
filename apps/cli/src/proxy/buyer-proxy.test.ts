@@ -471,6 +471,26 @@ test('parsePersistedPeers keeps peer with missing lastSeen but valid lastReached
   assert.equal(result[0]?.lastReachedAt, NOW - 10_000)
 })
 
+test('parsePersistedPeers keeps peer with stale discovery but recent keepalive reachability', () => {
+  const result = parsePersistedPeers(
+    {
+      discoveredPeers: [
+        {
+          peerId: validPeerId,
+          providers: ['openai'],
+          lastSeen: NOW - MAX_AGE_MS - 60_000,
+          lastReachedAt: NOW - 15_000,
+          keepaliveLatencyMs: 42,
+        },
+      ],
+    },
+    NOW,
+  )
+  assert.equal(result.length, 1)
+  assert.equal(result[0]?.lastReachedAt, NOW - 15_000)
+  assert.equal(result[0]?.keepaliveLatencyMs, 42)
+})
+
 test('parsePersistedPeers drops peer when both lastSeen and lastReachedAt are stale', () => {
   const result = parsePersistedPeers(
     {

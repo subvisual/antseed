@@ -24,6 +24,7 @@ function mkRow(overrides: Partial<DiscoverRow> = {}): DiscoverRow {
     onChainActiveChannelCount: 0, onChainGhostCount: 0, onChainTotalVolumeUsdc: '0', onChainLastSettledAt: 0,
     onChainReputationScore: null,
     networkRequests: null, networkInputTokens: null, networkOutputTokens: null,
+    latencyMs: null,
     selectionValue: '',
     ...overrides,
   };
@@ -161,6 +162,16 @@ test('applySort priceDesc sorts by combined price descending', () => {
   ];
   const sorted = applySort(rows, 'priceDesc', 'desc');
   assert.deepEqual(sorted.map((r) => (r.inputUsdPerMillion ?? 0) + (r.outputUsdPerMillion ?? 0)), [8, 5, 3]);
+});
+
+test('applySort latencyAsc orders by latency with unknown values last', () => {
+  const rows = [
+    mkRow({ serviceLabel: 'unknown', latencyMs: null }),
+    mkRow({ serviceLabel: 'slow', latencyMs: 180 }),
+    mkRow({ serviceLabel: 'fast', latencyMs: 32 }),
+  ];
+  const sorted = applySort(rows, 'latencyAsc', 'asc');
+  assert.deepEqual(sorted.map((r) => r.serviceLabel), ['fast', 'slow', 'unknown']);
 });
 
 test('paginate returns the right slice and totalPagesFor rounds up', () => {
