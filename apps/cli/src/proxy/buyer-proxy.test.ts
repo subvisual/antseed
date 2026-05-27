@@ -6,7 +6,7 @@ import { Readable } from 'node:stream'
 import test from 'node:test'
 import type { PeerInfo } from '@antseed/node'
 import { DEFAULT_BUYER_PEER_REFRESH_INTERVAL_MS } from '../config/defaults.js'
-import { BuyerProxy, parsePersistedPeers, selectCandidatePeersForRouting, rewriteServiceInBody } from './buyer-proxy.js'
+import { BuyerProxy, filterCandidatesByVariant, parsePersistedPeers, selectCandidatePeersForRouting, rewriteServiceInBody } from './buyer-proxy.js'
 import { sortPeersByPriority } from './routing-priority.js'
 
 function makePeer(seed: string, providers: string[]): PeerInfo {
@@ -798,4 +798,184 @@ test('routing priority wired end-to-end: most-trusted priority dispatches pinned
     trustedPeer.peerId,
     'trusted peer should be dispatched when pinned and priority=most-trusted',
   )
+})
+
+// ---------------------------------------------------------------------------
+// filterCandidatesByVariant unit tests
+// ---------------------------------------------------------------------------
+
+function makePeerWithCustomization(
+  seed: string,
+  providers: string[],
+  customization?: Record<string, Record<string, { variant: string; description?: string }>>,
+): PeerInfo {
+  const peerId = (seed.repeat(40) + 'a'.repeat(40)).slice(0, 40) as PeerInfo['peerId']
+  const peer: PeerInfo = { peerId, lastSeen: Date.now(), providers }
+  if (customization) {
+    ;(peer as PeerInfo & { providerCustomization?: unknown }).providerCustomization = customization
+  }
+  return peer
+}
+
+test('filterCandidatesByVariant: null requestedService is a no-op', () => {
+  const peers = [
+    makePeerWithCustomization('a', ['anthropic']),
+    makePeerWithCustomization('b', ['anthropic'], {
+      anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+    }),
+  ]
+  const result = filterCandidatesByVariant(peers, null, 'tee-hardened')
+  assert.equal(result.length, 2, 'all peers pass when serviceId is null')
+})
+
+test('filterCandidatesByVariant: null variant (Base) keeps only non-declaring peers', () => {
+  const basePeer = makePeerWithCustomization('a', ['anthropic'])
+  const variantPeer = makePeerWithCustomization('b', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  const result = filterCandidatesByVariant([basePeer, variantPeer], 'claude-sonnet-4', null)
+  assert.equal(result.length, 1, 'only one peer should pass')
+  assert.equal(result[0]?.peerId, basePeer.peerId, 'Base filter excludes variant-declaring peers')
+})
+
+test('filterCandidatesByVariant: "Base" variant keeps only non-declaring peers', () => {
+  const basePeer = makePeerWithCustomization('a', ['anthropic'])
+  const variantPeer = makePeerWithCustomization('b', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  const result = filterCandidatesByVariant([basePeer, variantPeer], 'claude-sonnet-4', 'Base')
+  assert.equal(result.length, 1)
+  assert.equal(result[0]?.peerId, basePeer.peerId)
+})
+
+test('filterCandidatesByVariant: specific variant keeps only matching peers', () => {
+  const basePeer = makePeerWithCustomization('a', ['anthropic'])
+  const teeHardenedPeer = makePeerWithCustomization('b', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  const fineTunedPeer = makePeerWithCustomization('c', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'fine-tuned' } },
+  })
+  const result = filterCandidatesByVariant(
+    [basePeer, teeHardenedPeer, fineTunedPeer],
+    'claude-sonnet-4',
+    'tee-hardened',
+  )
+  assert.equal(result.length, 1, 'only tee-hardened peer should match')
+  assert.equal(result[0]?.peerId, teeHardenedPeer.peerId)
+})
+
+test('filterCandidatesByVariant: requested variant with no peer match yields empty set', () => {
+  const basePeer = makePeerWithCustomization('a', ['anthropic'])
+  const result = filterCandidatesByVariant([basePeer], 'claude-sonnet-4', 'ghost-variant')
+  assert.equal(result.length, 0, 'no peers declare ghost-variant → empty')
+})
+
+test('filterCandidatesByVariant: case-insensitive service match', () => {
+  const variantPeer = makePeerWithCustomization('a', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  // serviceId in different case
+  const result = filterCandidatesByVariant([variantPeer], 'Claude-Sonnet-4', 'tee-hardened')
+  assert.equal(result.length, 1, 'service match should be case-insensitive')
+})
+
+test('filterCandidatesByVariant: variant + priority interactions', () => {
+  // Two TEE peers and one base peer; after variant filter only TEE peers remain,
+  // then priority sort should rank the cheaper TEE peer first.
+  const cheap = makePeerWithCustomization('a', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  cheap.defaultInputUsdPerMillion = 1
+  cheap.defaultOutputUsdPerMillion = 2
+
+  const expensive = makePeerWithCustomization('b', ['anthropic'], {
+    anthropic: { 'claude-sonnet-4': { variant: 'tee-hardened' } },
+  })
+  expensive.defaultInputUsdPerMillion = 10
+  expensive.defaultOutputUsdPerMillion = 20
+
+  const basePeer = makePeerWithCustomization('c', ['anthropic'])
+  basePeer.defaultInputUsdPerMillion = 0.5
+
+  const filtered = filterCandidatesByVariant(
+    [expensive, cheap, basePeer],
+    'claude-sonnet-4',
+    'tee-hardened',
+  )
+  assert.equal(filtered.length, 2, 'base peer excluded; only TEE peers remain')
+
+  const sorted = sortPeersByPriority(filtered, 'cheapest')
+  assert.equal(sorted[0]?.peerId, cheap.peerId, 'cheaper TEE peer should be first after sort')
+})
+
+// ---------------------------------------------------------------------------
+// Integration-flavoured test: routing variant header wired through proxy
+// ---------------------------------------------------------------------------
+
+test('routing variant wired end-to-end: variant header filters to matching peer', async () => {
+  // Arrange: one base peer and one TEE peer; request pins TEE peer but sets variant.
+  const teePeer = makePeerWithCustomization('a', ['openai'], {
+    openai: { 'gpt-4o': { variant: 'tee-hardened' } },
+  })
+  teePeer.providerServiceApiProtocols = {
+    openai: { services: { 'gpt-4o': ['openai-chat-completions'] } },
+  }
+
+  const basePeer = makePeerWithCustomization('b', ['openai'])
+  basePeer.providerServiceApiProtocols = {
+    openai: { services: { 'gpt-4o': ['openai-chat-completions'] } },
+  }
+
+  const proxy = makeBuyerProxyWithPeers([basePeer, teePeer])
+
+  let dispatchedPeerId: string | null = null
+  ;(proxy as any)._dispatchToPeer = async (
+    _res: unknown,
+    _req: unknown,
+    peer: PeerInfo,
+  ) => {
+    dispatchedPeerId = peer.peerId
+    return { done: true }
+  }
+
+  const req = makeProxyRequest({
+    body: { model: 'gpt-4o', messages: [] },
+    headers: {
+      'x-antseed-pin-peer': teePeer.peerId,
+      'x-antseed-routing-variant': 'tee-hardened',
+    },
+  })
+
+  await invokeProxy(proxy, req)
+
+  assert.equal(
+    dispatchedPeerId,
+    teePeer.peerId,
+    'TEE peer should be dispatched when variant=tee-hardened is requested',
+  )
+})
+
+test('routing variant wired end-to-end: Base variant excludes variant-declaring peers', async () => {
+  // The pinned peer has a declared variant. A request with Base variant (absent header)
+  // should still work if the pinned peer is pinned explicitly — because the proxy
+  // uses explicit pin-peer and the variant filter applies after narrowToPinned.
+  // The key test is that the narrowed set (just the pinned peer) passes through
+  // filterCandidatesByVariant when variant is absent and the peer has a variant.
+  const teePeer = makePeerWithCustomization('a', ['openai'], {
+    openai: { 'gpt-4o': { variant: 'tee-hardened' } },
+  })
+  teePeer.providerServiceApiProtocols = {
+    openai: { services: { 'gpt-4o': ['openai-chat-completions'] } },
+  }
+
+  const basePeer = makePeerWithCustomization('b', ['openai'])
+  basePeer.providerServiceApiProtocols = {
+    openai: { services: { 'gpt-4o': ['openai-chat-completions'] } },
+  }
+
+  // When both peers are candidates and we request Base routing, only basePeer passes.
+  const filtered = filterCandidatesByVariant([teePeer, basePeer], 'gpt-4o', null)
+  assert.equal(filtered.length, 1, 'only base peer passes Base filter')
+  assert.equal(filtered[0]?.peerId, basePeer.peerId, 'basePeer is the Base routing candidate')
 })

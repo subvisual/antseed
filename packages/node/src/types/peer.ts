@@ -79,6 +79,12 @@ export interface PeerInfo {
   providerServiceApiProtocols?: Record<string, ProviderServiceApiProtocolMatrixEntry>;
   /** Canonical model id map per provider (v9+). */
   providerCanonical?: Record<string, ProviderCanonicalMatrixEntry>;
+  /**
+   * Customization declarations per provider (v9+).
+   * Shape: { providerName: { serviceId: { variant, description? } } }
+   * Set by the buyer-proxy peer cache when the seller announces customization.
+   */
+  providerCustomization?: Record<string, Record<string, { variant: string; description?: string }>>;
   /** Deterministic fallback default input price (USD per 1M tokens). */
   defaultInputUsdPerMillion?: number;
   /** Deterministic fallback default output price (USD per 1M tokens). */

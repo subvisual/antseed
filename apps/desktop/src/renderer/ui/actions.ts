@@ -24,6 +24,7 @@ export type AppActions = {
   clearPinnedPeer: () => void;
   setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
   dismissRoutingTooltip: () => void;
+  setRoutingVariant: (variant: string) => void;
   dismissOnboardingBanner: () => void;
   reopenOnboardingBanner: () => void;
   setOnboardingCategories: (categories: string[]) => void;

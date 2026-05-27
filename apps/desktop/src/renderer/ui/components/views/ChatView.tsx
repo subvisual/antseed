@@ -24,6 +24,7 @@ import { SessionApprovalCard } from '../chat/SessionApprovalCard';
 import { LowBalanceWarning } from '../chat/LowBalanceWarning';
 import { ServiceDropdown } from '../chat/ServiceDropdown';
 import { RoutingPriorityChip } from '../chat/RoutingPriorityChip';
+import { VariantChip } from '../chat/VariantChip';
 import { SwitchServiceDialog } from '../chat/SwitchServiceDialog';
 import { LowReputationDialog } from '../chat/LowReputationDialog';
 import { ServiceSwitchTooltip } from '../chat/ServiceSwitchTooltip';
@@ -642,6 +643,27 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
     actions.dismissRoutingTooltip();
   }, [actions]);
 
+  const handleVariantChange = useCallback(
+    (variant: string) => {
+      actions.setRoutingVariant(variant);
+    },
+    [actions],
+  );
+
+  // Derive the unique variants declared by peers offering the current service.
+  // Used to decide whether to render VariantChip at all (hidden when empty).
+  const currentServiceVariants = useMemo(() => {
+    const serviceId = currentServiceOption?.id;
+    if (!serviceId) return [];
+    const seen = new Set<string>();
+    for (const row of snap.discoverRows) {
+      if (row.serviceId === serviceId && row.customization?.variant) {
+        seen.add(row.customization.variant);
+      }
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [currentServiceOption?.id, snap.discoverRows]);
+
   const pendingSwitchOption = useMemo(
     () =>
       pendingSwitchValue
@@ -1057,6 +1079,14 @@ export function ChatView({ active, onSelectView }: ChatViewProps) {
               onChange={handleRoutingPriorityChange}
               onTooltipDismiss={handleRoutingTooltipDismiss}
             />
+            {currentServiceVariants.length > 0 && (
+              <VariantChip
+                value={snap.chatRoutingVariant}
+                variants={currentServiceVariants}
+                disabled={snap.chatInputDisabled || snap.chatSending}
+                onChange={handleVariantChange}
+              />
+            )}
             {snap.chatActiveConversation && currentPeerId && (
               <button
                 type="button"

@@ -63,6 +63,57 @@ import { DEFAULT_BUYER_PEER_REFRESH_INTERVAL_MS } from '../config/defaults.js'
 export { selectCandidatePeersForRouting, type CandidatePeerRouteSelection } from './routing.js'
 export { rewriteServiceInBody } from './request-utils.js'
 
+/**
+ * Filter candidate peers by routing variant BEFORE priority sort.
+ *
+ * - When `requestedVariant` is null, 'Base', or empty: keep only peers that
+ *   declare NO customization for the requested service (Base routing excludes
+ *   variant-declaring peers).
+ * - When `requestedVariant` is a non-Base string: keep only peers whose
+ *   `providerCustomization[provider][serviceId].variant === requestedVariant`.
+ *   If no peer matches the requested variant the result is empty — the
+ *   standard "no peers available" failure path handles this defensively.
+ * - When `requestedService` is null the filter is a no-op (all peers pass).
+ */
+export function filterCandidatesByVariant(
+  peers: PeerInfo[],
+  requestedService: string | null,
+  requestedVariant: string | null,
+): PeerInfo[] {
+  if (!requestedService) return peers
+
+  const normalizedService = requestedService.trim().toLowerCase()
+  const wantsBase = !requestedVariant || requestedVariant.trim() === '' || requestedVariant.trim() === 'Base'
+
+  return peers.filter((peer) => {
+    const customMap = (peer as PeerInfo & {
+      providerCustomization?: Record<string, Record<string, { variant: string; description?: string }>>
+    }).providerCustomization
+
+    // Determine if this peer declares a variant for the requested service.
+    // A peer can have multiple providers, so check all of them.
+    let peerVariantForService: string | null = null
+    if (customMap) {
+      for (const providerEntries of Object.values(customMap)) {
+        for (const [svcId, custom] of Object.entries(providerEntries)) {
+          if (svcId.toLowerCase() === normalizedService && custom?.variant) {
+            peerVariantForService = custom.variant
+            break
+          }
+        }
+        if (peerVariantForService !== null) break
+      }
+    }
+
+    if (wantsBase) {
+      // Base routing: keep peers with NO declared variant for this service.
+      return peerVariantForService === null
+    }
+    // Variant routing: keep peers whose declared variant matches.
+    return peerVariantForService === requestedVariant!.trim()
+  })
+}
+
 export interface BuyerProxyConfig {
   port: number
   node: AntseedNode
@@ -279,6 +330,9 @@ export function parsePersistedPeers(
     }
     if (entry.providerCanonical && typeof entry.providerCanonical === 'object') {
       peer.providerCanonical = entry.providerCanonical as PeerInfo['providerCanonical']
+    }
+    if (entry.providerCustomization && typeof entry.providerCustomization === 'object') {
+      peer.providerCustomization = entry.providerCustomization as PeerInfo['providerCustomization']
     }
     if (typeof entry.defaultInputUsdPerMillion === 'number') {
       peer.defaultInputUsdPerMillion = entry.defaultInputUsdPerMillion
@@ -1077,7 +1131,14 @@ export class BuyerProxy {
       rawPriorityHeader === 'cheapest' || rawPriorityHeader === 'fastest'
         ? rawPriorityHeader
         : 'most-trusted'
-    log(`Routing hints: provider=${explicitProvider ?? 'auto'} pin-peer=${explicitPeerId ?? 'none'} priority=${routingPriority}`)
+    // Read optional routing variant from the per-request header. When set and
+    // not 'Base', candidate peers are pre-filtered to those whose declared
+    // customization[serviceId].variant matches the requested variant. 'Base'
+    // (or absent) filters to peers that declare NO customization for the service.
+    const rawVariantHeader = serializedReq.headers['x-antseed-routing-variant']?.trim()
+    const routingVariant: string | null =
+      rawVariantHeader && rawVariantHeader.length > 0 ? rawVariantHeader : null
+    log(`Routing hints: provider=${explicitProvider ?? 'auto'} pin-peer=${explicitPeerId ?? 'none'} priority=${routingPriority} variant=${routingVariant ?? 'none'}`)
 
     // Auto peer selection is disabled. Every request MUST target a specific
     // peer, either via the per-request `x-antseed-pin-peer` header or via a
@@ -1142,6 +1203,15 @@ export class BuyerProxy {
         explicitProvider,
         'lenient',
       )
+      // Apply variant filter BEFORE priority sort. When a variant is requested,
+      // narrow the candidate set to peers whose customization for the service
+      // matches. 'Base' (or absent) narrows to peers with NO customization for
+      // the service (Base routing excludes variant-declaring peers).
+      const variantFiltered = filterCandidatesByVariant(
+        raw.candidatePeers,
+        requestedService,
+        routingVariant,
+      )
       // Sort candidates by routing priority so that the first eligible peer
       // reflects the caller's preference. For the common pinned-peer path
       // there is only one candidate and the sort is a no-op. When multiple
@@ -1149,7 +1219,7 @@ export class BuyerProxy {
       // ensures the cheapest / fastest / most-trusted peer is tried first.
       return {
         ...raw,
-        candidatePeers: sortPeersByPriority(raw.candidatePeers, routingPriority),
+        candidatePeers: sortPeersByPriority(variantFiltered, routingPriority),
       }
     }
 

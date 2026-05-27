@@ -26,6 +26,10 @@ import {
   type RoutingPriority,
 } from './chat-routing-priority.js';
 import {
+  ANTSEED_ROUTING_VARIANT_CUSTOM_TYPE,
+  resolveLatestRoutingVariant,
+} from './chat-routing-variant.js';
+import {
   readOnboardingPrefs,
   writeOnboardingPrefs,
 } from './onboarding-prefs.js';
@@ -169,6 +173,8 @@ type AiConversation = {
   usage: AiUsageTotals;
   workspacePath?: string;
   routingPriority: RoutingPriority;
+  /** Per-chat routing variant; 'Base' means no customization filter applied. */
+  routingVariant: string;
 };
 
 type AiConversationSummary = {
@@ -186,6 +192,8 @@ type AiConversationSummary = {
   totalEstimatedCostUsd: number;
   workspacePath?: string;
   routingPriority: RoutingPriority;
+  /** Per-chat routing variant; 'Base' means no customization filter applied. */
+  routingVariant: string;
 };
 
 type RegisterPiChatHandlersOptions = {
@@ -1171,6 +1179,7 @@ function makeProxyService(
   spendingAuth?: string | null,
   supportsMultimodal: boolean = false,
   routingPriority?: RoutingPriority,
+  routingVariant?: string,
 ): Model<any> {
   // The buyer proxy resolves the route plan from the pinned peer + the
   // service ID in the request body, so we don't need to send
@@ -1180,6 +1189,7 @@ function makeProxyService(
   if (preferredPeerId) headers['x-antseed-pin-peer'] = preferredPeerId;
   if (spendingAuth) headers['x-antseed-spending-auth'] = spendingAuth;
   if (routingPriority) headers['x-antseed-routing-priority'] = routingPriority;
+  if (routingVariant) headers['x-antseed-routing-variant'] = routingVariant;
 
   // The OpenAI SDK appends API paths (e.g. /responses, /chat/completions)
   // to baseUrl, so include /v1 to match the buyer proxy's expected paths.
@@ -1453,9 +1463,9 @@ class PiConversationStore {
     }
 
     const peerData = extractPeerFromEntries(manager);
-    const routingPriority = resolveLatestRoutingPriority(
-      manager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>,
-    );
+    const entries = manager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>;
+    const routingPriority = resolveLatestRoutingPriority(entries);
+    const routingVariant = resolveLatestRoutingVariant(entries);
     // SessionManager reads the cwd persisted in the session file; restoration
     // across app restarts depends on that value reflecting the session workspace.
     const sessionCwd = manager.getCwd() || undefined;
@@ -1469,6 +1479,7 @@ class PiConversationStore {
       updatedAt,
       usage,
       routingPriority,
+      routingVariant,
       ...(peerData?.peerId ? { peerId: peerData.peerId } : {}),
       ...(peerData?.peerLabel ? { peerLabel: peerData.peerLabel } : {}),
       ...(sessionCwd ? { workspacePath: sessionCwd } : {}),
@@ -1516,6 +1527,7 @@ class PiConversationStore {
         totalTokens,
         totalEstimatedCostUsd: deriveCost(conversation.messages),
         routingPriority: conversation.routingPriority,
+        routingVariant: conversation.routingVariant,
         ...(conversation.peerId ? { peerId: conversation.peerId } : {}),
         ...(conversation.peerLabel ? { peerLabel: conversation.peerLabel } : {}),
         ...(conversation.workspacePath ? { workspacePath: conversation.workspacePath } : {}),
@@ -1540,6 +1552,7 @@ class PiConversationStore {
         totalTokens,
         totalEstimatedCostUsd: deriveCost(conversation.messages),
         routingPriority: conversation.routingPriority,
+        routingVariant: conversation.routingVariant,
         ...(conversation.peerId ? { peerId: conversation.peerId } : {}),
         ...(conversation.peerLabel ? { peerLabel: conversation.peerLabel } : {}),
         ...(conversation.workspacePath ? { workspacePath: conversation.workspacePath } : {}),
@@ -1603,6 +1616,12 @@ class PiConversationStore {
     const manager = await this.openSessionManager(id);
     if (!manager) return;
     manager.appendCustomEntry(ANTSEED_ROUTING_PRIORITY_CUSTOM_TYPE, { priority });
+  }
+
+  async setRoutingVariant(id: string, variant: string): Promise<void> {
+    const manager = await this.openSessionManager(id);
+    if (!manager) return;
+    manager.appendCustomEntry(ANTSEED_ROUTING_VARIANT_CUSTOM_TYPE, { variant });
   }
 
   async delete(id: string): Promise<void> {
@@ -2103,11 +2122,11 @@ export function registerPiChatHandlers({
     const serviceId = normalizeServiceId(serviceOverride || context.model?.modelId);
     const persistedPeer = extractPeerFromEntries(sessionManager);
     const peerOverrideId = normalizePeerId(peerOverride) ?? null;
-    // Read the routing priority stored for this conversation so it can influence
-    // peer selection when no peer is already pinned.
-    const sessionRoutingPriority = resolveLatestRoutingPriority(
-      sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>,
-    );
+    // Read the routing priority and variant stored for this conversation so they
+    // can influence peer selection when no peer is already pinned.
+    const sessionEntries = sessionManager.getEntries() as Array<{ type?: string; customType?: string; data?: unknown }>;
+    const sessionRoutingPriority = resolveLatestRoutingPriority(sessionEntries);
+    const sessionRoutingVariant = resolveLatestRoutingVariant(sessionEntries);
     // Resolve the preferred peer.
     // Priority: explicit override > in-memory sticky (if not skip-listed) > persisted.
     const stickyPeer = peerOverrideId ? null : getStickyPeer(conversationId);
@@ -2189,6 +2208,7 @@ export function registerPiChatHandlers({
       null,
       supportsMultimodal,
       sessionRoutingPriority,
+      sessionRoutingVariant,
     );
 
     const authStorage = AuthStorage.inMemory();
@@ -3121,6 +3141,21 @@ export function registerPiChatHandlers({
       await store.setRoutingPriority(conversationId, priority);
       // Changing the priority chip clears the sticky peer so the very next
       // prompt picks a fresh peer under the new priority.
+      clearStickyState(conversationId);
+      preferredPeerByConversationId.delete(conversationId);
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'chat:ai-set-routing-variant',
+    async (_event, conversationId: string, variant: string) => {
+      if (typeof variant !== 'string' || variant.trim().length === 0) {
+        return { ok: false, error: `Invalid routing variant: ${String(variant)}` };
+      }
+      await store.setRoutingVariant(conversationId, variant);
+      // Changing the variant chip clears the sticky peer so the very next
+      // prompt picks a fresh peer under the new variant filter.
       clearStickyState(conversationId);
       preferredPeerByConversationId.delete(conversationId);
       return { ok: true };

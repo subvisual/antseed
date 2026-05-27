@@ -245,6 +245,9 @@ const api = {
   chatAiSetRoutingPriority(conversationId: string, priority: 'cheapest' | 'fastest' | 'most-trusted'): Promise<{ ok: boolean; error?: string }> {
     return ipcRenderer.invoke('chat:ai-set-routing-priority', conversationId, priority);
   },
+  chatAiSetRoutingVariant(conversationId: string, variant: string): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('chat:ai-set-routing-variant', conversationId, variant);
+  },
   chatAiGetBuyerRoutingDefaults(): Promise<{ ok: boolean; data?: { defaultPriority: 'cheapest' | 'fastest' | 'most-trusted' | null; tooltipDismissed: boolean }; error?: string }> {
     return ipcRenderer.invoke('chat:ai-get-buyer-routing-defaults');
   },

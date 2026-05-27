@@ -87,6 +87,7 @@ export type ChatModuleApi = {
   clearPinnedPeer: () => void;
   setRoutingPriority: (priority: 'cheapest' | 'fastest' | 'most-trusted') => void;
   dismissRoutingTooltip: () => void;
+  setRoutingVariant: (variant: string) => void;
   dismissOnboardingBanner: () => void;
   reopenOnboardingBanner: () => void;
   setOnboardingCategories: (categories: string[]) => void;
@@ -1561,6 +1562,11 @@ export function initChatModule({
         }
         // Opening an existing conversation always clears the ? state.
         uiState.chatRoutingPriorityIsUnset = false;
+        // Restore per-chat routing variant (defaults to 'Base' when absent).
+        const convVariant = conv.routingVariant as string | undefined;
+        uiState.chatRoutingVariant = (typeof convVariant === 'string' && convVariant.trim().length > 0)
+          ? convVariant
+          : 'Base';
 
         setLocalConversationMessages(convId, uiState.chatMessages as ChatMessage[]);
         updateThreadMeta(activeConversation);
@@ -1610,6 +1616,8 @@ export function initChatModule({
     } else {
       uiState.chatRoutingPriorityIsUnset = false;
     }
+    // New chats always start at 'Base' — variants are opt-in.
+    uiState.chatRoutingVariant = 'Base';
     notifyUiStateChanged();
   }
 
@@ -2381,6 +2389,18 @@ export function initChatModule({
     notifyUiStateChanged();
   }
 
+  function setRoutingVariant(variant: string): void {
+    uiState.chatRoutingVariant = variant;
+    if (activeConversation) {
+      (activeConversation as { routingVariant?: string }).routingVariant = variant;
+    }
+    if (bridge?.chatAiSetRoutingVariant && uiState.chatActiveConversation) {
+      void bridge.chatAiSetRoutingVariant(uiState.chatActiveConversation, variant)
+        .catch(() => undefined);
+    }
+    notifyUiStateChanged();
+  }
+
   function dismissOnboardingBanner(): void {
     uiState.onboardingBannerDismissed = true;
     notifyUiStateChanged();
@@ -3027,6 +3047,7 @@ export function initChatModule({
     clearPinnedPeer,
     setRoutingPriority,
     dismissRoutingTooltip,
+    setRoutingVariant,
     dismissOnboardingBanner,
     reopenOnboardingBanner,
     setOnboardingCategories,

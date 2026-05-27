@@ -451,6 +451,7 @@ registerActions({
   clearPinnedPeer: chatApi.clearPinnedPeer,
   setRoutingPriority: chatApi.setRoutingPriority,
   dismissRoutingTooltip: chatApi.dismissRoutingTooltip,
+  setRoutingVariant: chatApi.setRoutingVariant,
   dismissOnboardingBanner: chatApi.dismissOnboardingBanner,
   reopenOnboardingBanner: chatApi.reopenOnboardingBanner,
   setOnboardingCategories: chatApi.setOnboardingCategories,

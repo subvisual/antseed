@@ -277,6 +277,11 @@ export type RendererUiState = {
   chatRoutingPriorityIsUnset: boolean;
   /** True once the buyer has dismissed the one-time routing-priority tooltip. */
   chatRoutingTooltipDismissed: boolean;
+  /**
+   * Per-chat routing variant. 'Base' means no variant filter (standard peers).
+   * Non-Base values filter to peers declaring that variant for the current service.
+   */
+  chatRoutingVariant: string;
   /** True once the buyer has dismissed the onboarding banner. */
   onboardingBannerDismissed: boolean;
   /** Category keys the buyer selected in the onboarding banner. */
@@ -429,6 +434,7 @@ export function createInitialUiState(): RendererUiState {
     chatRoutingPriority: 'most-trusted',
     chatRoutingPriorityIsUnset: false,
     chatRoutingTooltipDismissed: false,
+    chatRoutingVariant: 'Base',
     onboardingBannerDismissed: false,
     onboardingSelectedCategories: [],
     onboardingPrefsLoaded: false,
