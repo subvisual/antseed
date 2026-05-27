@@ -208,9 +208,82 @@ test('resolveCanonicalKey: empty string canonical falls through to fuzzy heurist
   assert.equal(resolveCanonicalKey(row), 'gpt-4o-mini');
 });
 
-test('CURATED_CANONICAL_TABLE: is exported and starts empty (placeholder for issue 2)', () => {
+// ---------------------------------------------------------------------------
+// CURATED_CANONICAL_TABLE — content and precedence
+// ---------------------------------------------------------------------------
+
+test('CURATED_CANONICAL_TABLE: is exported and non-empty', () => {
   assert.equal(typeof CURATED_CANONICAL_TABLE, 'object');
-  assert.equal(Object.keys(CURATED_CANONICAL_TABLE).length, 0);
+  assert.ok(Object.keys(CURATED_CANONICAL_TABLE).length > 0, 'table must be populated');
+});
+
+test('CURATED_CANONICAL_TABLE: dated claude sonnet variant maps to base name', () => {
+  assert.equal(CURATED_CANONICAL_TABLE['claude-sonnet-4-5-20250929'], 'claude-sonnet-4-5');
+});
+
+test('CURATED_CANONICAL_TABLE: claude-3-5-sonnet-20241022 maps to claude-3-5-sonnet', () => {
+  assert.equal(CURATED_CANONICAL_TABLE['claude-3-5-sonnet-20241022'], 'claude-3-5-sonnet');
+});
+
+test('CURATED_CANONICAL_TABLE: codex maps to codex (openai-responses canonical)', () => {
+  assert.equal(CURATED_CANONICAL_TABLE['codex'], 'codex');
+});
+
+test('CURATED_CANONICAL_TABLE: qwen alias maps to canonical qwen3 key', () => {
+  // Both "qwen-3-coder-480b" (alternate spelling) and "qwen3-coder-480b" must
+  // resolve to the same canonical so providers advertising either spelling
+  // collapse into one group.
+  assert.equal(
+    CURATED_CANONICAL_TABLE['qwen-3-coder-480b'],
+    CURATED_CANONICAL_TABLE['qwen3-coder-480b'],
+  );
+});
+
+test('resolveCanonicalKey: declared canonical wins over curated table entry', () => {
+  // Even though "claude-sonnet-4-5-20250929" is in the curated table,
+  // an explicit declared canonical takes precedence.
+  const row = makeRow({
+    serviceId: 'claude-sonnet-4-5-20250929',
+    canonical: 'claude-sonnet-4-5-custom',
+  });
+  assert.equal(resolveCanonicalKey(row), 'claude-sonnet-4-5-custom');
+});
+
+test('resolveCanonicalKey: curated table entry used when no declared canonical', () => {
+  const row = makeRow({
+    serviceId: 'claude-sonnet-4-5-20250929',
+    canonical: null,
+  });
+  // table maps this dated variant to 'claude-sonnet-4-5'
+  assert.equal(resolveCanonicalKey(row), 'claude-sonnet-4-5');
+});
+
+test('resolveCanonicalKey: falls through to fuzzy heuristic when not in table', () => {
+  const row = makeRow({
+    serviceId: 'anthropic/claude-3-haiku-20240307',
+    canonical: null,
+  });
+  // not in curated table → fuzzy strips 'anthropic/' prefix
+  assert.equal(resolveCanonicalKey(row), 'claude-3-haiku-20240307');
+});
+
+test('groupByCanonical: two providers advertising dated/base sonnet collapse via table', () => {
+  const rows: DiscoverRow[] = [
+    makeRow({
+      serviceId: 'claude-sonnet-4-5-20250929',
+      canonical: null,
+      rowKey: 'peer1:dated',
+    }),
+    makeRow({
+      serviceId: 'claude-sonnet-4-5',
+      canonical: null,
+      rowKey: 'peer2:base',
+      peerId: 'peer2',
+    }),
+  ];
+  const groups = groupByCanonical(rows);
+  assert.equal(groups.size, 1, 'dated and base variants must collapse into one group');
+  assert.ok(groups.has('claude-sonnet-4-5'), 'group key should be the canonical base name');
 });
 
 test('groupByCanonical: declared canonical collapses dated and base service into one group', () => {

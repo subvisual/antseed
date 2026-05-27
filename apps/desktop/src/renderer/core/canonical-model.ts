@@ -10,11 +10,63 @@
 import type { DiscoverRow } from './state.js';
 
 /**
- * Placeholder for the curated canonical table.
- * Issue 2 populates this with well-known model name normalizations.
- * Exported so tests can verify the table is reachable.
+ * Hand-curated canonical fallback table seeded from the 7 official in-repo
+ * plugins (provider-anthropic, provider-claude-code, provider-claude-oauth,
+ * provider-openai, provider-openai-responses, provider-local-llm,
+ * router-local). Keys are lowercased serviceIds. Values are the stable base
+ * name that dedup logic should group under.
+ *
+ * This table is consulted after the provider-declared `canonical` field but
+ * before the v1 fuzzy heuristic, giving day-1 dedup coverage for external
+ * providers that emit the same well-known strings without migrating to
+ * declare `canonical` themselves.
+ *
+ * Keep this list small and focused — only what the official plugins actually
+ * ship. The declared `canonical` field in v9+ metadata is the long-term
+ * source of truth.
  */
-export const CURATED_CANONICAL_TABLE: Record<string, string> = {};
+export const CURATED_CANONICAL_TABLE: Record<string, string> = {
+  // ---- Anthropic models (provider-anthropic, provider-claude-code,
+  //      provider-claude-oauth) — dated suffixes collapse to base name ------
+  // Claude 4 generation
+  'claude-opus-4-7': 'claude-opus-4-7',
+  'claude-opus-4-6': 'claude-opus-4-6',
+  'claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'claude-sonnet-4-5': 'claude-sonnet-4-5',
+  'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+  'claude-haiku-4-5': 'claude-haiku-4-5',
+  // Claude 3.x generation
+  'claude-3-5-sonnet-20241022': 'claude-3-5-sonnet',
+  'claude-3-5-sonnet-20240620': 'claude-3-5-sonnet',
+  'claude-3-5-haiku-20241022': 'claude-3-5-haiku',
+  'claude-3-opus-20240229': 'claude-3-opus',
+  'claude-3-sonnet-20240229': 'claude-3-sonnet',
+  'claude-3-haiku-20240307': 'claude-3-haiku',
+
+  // ---- OpenAI models (provider-openai) ------------------------------------
+  'gpt-4o': 'gpt-4o',
+  'gpt-4o-mini': 'gpt-4o-mini',
+  'gpt-4.1': 'gpt-4.1',
+  'gpt-4.1-mini': 'gpt-4.1-mini',
+  'gpt-oss-120b': 'gpt-oss-120b',
+  'o1': 'o1',
+  'o1-mini': 'o1-mini',
+  'o3': 'o3',
+  'o3-mini': 'o3-mini',
+  'o4-mini': 'o4-mini',
+
+  // ---- OpenAI Responses (provider-openai-responses) -----------------------
+  // "codex" is the well-known service used in setup-local-test.sh
+  'codex': 'codex',
+
+  // ---- Third-party models typically served via provider-openai ------------
+  'deepseek-v4-flash': 'deepseek-v4-flash',
+  'deepseek-v3.1': 'deepseek-v3.1',
+  'qwen3-coder-480b': 'qwen3-coder-480b',
+  'qwen-3-coder-480b': 'qwen3-coder-480b',
+  'kimi-k2.5': 'kimi-k2.5',
+  'minimax-m2.7': 'minimax-m2.7',
+};
 
 /**
  * Known provider prefixes to strip. Keep the list short and obvious.
