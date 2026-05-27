@@ -16,8 +16,11 @@ export const MAX_SERVICE_CATEGORIES_PER_SERVICE = 8;
 export const MAX_SERVICE_CATEGORY_LENGTH = 32;
 export const MAX_SERVICE_API_PROTOCOLS_PER_SERVICE = 4;
 export const MAX_CANONICAL_ID_LENGTH = 32;
+export const MAX_CUSTOMIZATION_VARIANT_LENGTH = 32;
+export const MAX_CUSTOMIZATION_DESCRIPTION_LENGTH = 256;
 const SERVICE_CATEGORY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const CANONICAL_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const CUSTOMIZATION_VARIANT_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const SERVICE_API_PROTOCOL_SET = new Set<string>(WELL_KNOWN_SERVICE_API_PROTOCOLS);
 
 export interface ValidationError {
@@ -323,6 +326,58 @@ export function validateMetadata(metadata: PeerMetadata): ValidationError[] {
             field: `providers[${i}].canonical.${serviceId}`,
             message: "Canonical id must use lowercase letters, digits, or hyphen and start with alphanumeric",
           });
+        }
+      }
+    }
+
+    // customization (v9+) — keys must be in services; variant required, 1–32 chars, serviceId regex;
+    // description optional, max 256 chars
+    if (p.customization !== undefined) {
+      for (const [serviceId, cust] of Object.entries(p.customization)) {
+        if (!hasWildcardServices && !p.services.includes(serviceId)) {
+          errors.push({
+            field: `providers[${i}].customization.${serviceId}`,
+            message: "Customization key must reference a service listed in providers[].services",
+          });
+        }
+        if (!cust || typeof cust !== "object") {
+          errors.push({
+            field: `providers[${i}].customization.${serviceId}`,
+            message: "Customization value must be an object",
+          });
+          continue;
+        }
+        if (typeof cust.variant !== "string" || cust.variant.length === 0) {
+          errors.push({
+            field: `providers[${i}].customization.${serviceId}.variant`,
+            message: "Customization variant is required and must be a non-empty string",
+          });
+        } else {
+          if (cust.variant.length > MAX_CUSTOMIZATION_VARIANT_LENGTH) {
+            errors.push({
+              field: `providers[${i}].customization.${serviceId}.variant`,
+              message: `Customization variant length ${cust.variant.length} exceeds max ${MAX_CUSTOMIZATION_VARIANT_LENGTH}`,
+            });
+          }
+          if (!CUSTOMIZATION_VARIANT_PATTERN.test(cust.variant)) {
+            errors.push({
+              field: `providers[${i}].customization.${serviceId}.variant`,
+              message: "Customization variant must use lowercase letters, digits, or hyphen and start with alphanumeric",
+            });
+          }
+        }
+        if (cust.description !== undefined) {
+          if (typeof cust.description !== "string") {
+            errors.push({
+              field: `providers[${i}].customization.${serviceId}.description`,
+              message: "Customization description must be a string when provided",
+            });
+          } else if (cust.description.length > MAX_CUSTOMIZATION_DESCRIPTION_LENGTH) {
+            errors.push({
+              field: `providers[${i}].customization.${serviceId}.description`,
+              message: `Customization description length ${cust.description.length} exceeds max ${MAX_CUSTOMIZATION_DESCRIPTION_LENGTH}`,
+            });
+          }
         }
       }
     }

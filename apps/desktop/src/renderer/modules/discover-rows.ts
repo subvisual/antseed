@@ -64,6 +64,15 @@ export function normalizeDiscoverRow(raw: unknown): DiscoverRow | null {
       ? latencyMs
       : null,
     selectionValue: String(r.selectionValue ?? ''),
+    canonical: typeof r.canonical === 'string' ? r.canonical : null,
+    customization: (r.customization && typeof r.customization === 'object' && typeof (r.customization as Record<string, unknown>).variant === 'string')
+      ? {
+          variant: (r.customization as Record<string, unknown>).variant as string,
+          ...(typeof (r.customization as Record<string, unknown>).description === 'string'
+            ? { description: (r.customization as Record<string, unknown>).description as string }
+            : {}),
+        }
+      : null,
   };
 }
 

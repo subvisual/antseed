@@ -294,6 +294,89 @@ describe('encodeMetadata / decodeMetadata', () => {
     const decoded = decodeMetadata(encodeMetadata(v8Meta));
     expect(decoded.providers[0]!.canonical).toBeUndefined();
   });
+
+  it('round-trips v9 metadata with customization map', () => {
+    const meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5-20250929', 'claude-haiku-4-5'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          customization: {
+            'claude-sonnet-4-5-20250929': { variant: 'tee-hardened', description: 'Runs in a Trusted Execution Environment' },
+            'claude-haiku-4-5': { variant: 'fine-tuned' },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    expect(decoded.version).toBe(9);
+    expect(decoded.providers[0]!.customization).toEqual({
+      'claude-sonnet-4-5-20250929': { variant: 'tee-hardened', description: 'Runs in a Trusted Execution Environment' },
+      'claude-haiku-4-5': { variant: 'fine-tuned' },
+    });
+  });
+
+  it('round-trips v9 metadata with both canonical and customization', () => {
+    const meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5-20250929'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          canonical: { 'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5' },
+          customization: { 'claude-sonnet-4-5-20250929': { variant: 'tee-hardened' } },
+          maxConcurrency: 5,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    expect(decoded.providers[0]!.canonical).toEqual({ 'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5' });
+    expect(decoded.providers[0]!.customization).toEqual({ 'claude-sonnet-4-5-20250929': { variant: 'tee-hardened' } });
+  });
+
+  it('round-trips v9 metadata with neither canonical nor customization', () => {
+    const meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5-20250929'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          maxConcurrency: 5,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    expect(decoded.providers[0]!.canonical).toBeUndefined();
+    expect(decoded.providers[0]!.customization).toBeUndefined();
+  });
+
+  it('customization description absent decoded as undefined (not empty string)', () => {
+    const meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          customization: { 'claude-sonnet-4-5': { variant: 'base' } },
+          maxConcurrency: 5,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    const cust = decoded.providers[0]!.customization?.['claude-sonnet-4-5'];
+    expect(cust?.variant).toBe('base');
+    expect(cust?.description).toBeUndefined();
+  });
 });
 
 describe('encodeMetadataForSigning', () => {

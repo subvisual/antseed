@@ -145,6 +145,12 @@ export type DiscoverRow = {
    * Null means the provider did not declare a canonical (v8 or earlier).
    */
   canonical?: string | null;
+  /**
+   * Provider-declared customization for this service (v9+).
+   * Null means no customization declared or the provider is pre-v9.
+   * The `variant` field names the customization (e.g. "tee-hardened").
+   */
+  customization?: { variant: string; description?: string } | null;
 };
 
 export type ActiveChannelInfo = {

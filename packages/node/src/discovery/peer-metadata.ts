@@ -38,8 +38,27 @@ export interface ProviderAnnouncement {
    * the serviceId regex (^[a-z0-9][a-z0-9-]*$, max 32 chars).
    */
   canonical?: Record<string, string>;
+  /**
+   * Service customization declarations (v9+).
+   * Maps serviceId → ServiceCustomization describing the provider's variant
+   * for that service (e.g. a fine-tuned model, a TEE-hardened instance).
+   * Keys must appear in the provider's `services` array.
+   */
+  customization?: Record<string, ServiceCustomization>;
   maxConcurrency: number;
   currentLoad: number;
+}
+
+/**
+ * Describes a provider-specific customization of a base service (v9+).
+ * `variant` identifies the customization (e.g. "tee-hardened", "fine-tuned").
+ * `description` is an optional human-readable explanation (max 256 chars).
+ */
+export interface ServiceCustomization {
+  /** Short identifier for the variant. Matches ^[a-z0-9][a-z0-9-]*$, max 32 chars. */
+  variant: string;
+  /** Optional human-readable description of the variant. Max 256 chars. */
+  description?: string;
 }
 
 export interface PeerMetadata {

@@ -199,6 +199,27 @@ function encodeBody(metadata: PeerMetadata): Uint8Array {
         parts.push(new Uint8Array([canonicalIdBytes.length]));
         parts.push(canonicalIdBytes);
       }
+
+      // customization map (v9+) — length-prefixed map of serviceId → { variant, description? }
+      // Each entry: [serviceIdLen:1][serviceId:N][variantLen:1][variant:N][descLen:1][desc:N]
+      // description is encoded as a 0-length string when absent.
+      const customizationEntries = Object.entries(p.customization ?? {})
+        .filter(([k, v]) => k.length > 0 && v.variant.length > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+      parts.push(new Uint8Array([customizationEntries.length]));
+      for (const [serviceId, cust] of customizationEntries) {
+        const serviceIdBytes = new TextEncoder().encode(serviceId);
+        parts.push(new Uint8Array([serviceIdBytes.length]));
+        parts.push(serviceIdBytes);
+        const variantBytes = new TextEncoder().encode(cust.variant);
+        parts.push(new Uint8Array([variantBytes.length]));
+        parts.push(variantBytes);
+        const descBytes = new TextEncoder().encode(cust.description ?? '');
+        const descLenBuf = new ArrayBuffer(2);
+        new DataView(descLenBuf).setUint16(0, descBytes.length, false);
+        parts.push(new Uint8Array(descLenBuf));
+        parts.push(descBytes);
+      }
     }
 
     // maxConcurrency: 2 bytes (uint16)
@@ -506,6 +527,7 @@ export function decodeMetadata(data: Uint8Array): PeerMetadata {
 
     // canonical map (v9+)
     let canonical: Record<string, string> | undefined;
+    let customization: Record<string, { variant: string; description?: string }> | undefined;
     if (version >= CANONICAL_METADATA_VERSION) {
       checkBounds(offset, 1, data.length);
       const canonicalCount = data[offset]!;
@@ -528,6 +550,43 @@ export function decodeMetadata(data: Uint8Array): PeerMetadata {
           offset += canonicalIdLen;
 
           canonical[canonicalServiceId] = canonicalId;
+        }
+      }
+
+      // customization map (v9+)
+      checkBounds(offset, 1, data.length);
+      const customizationCount = data[offset]!;
+      offset += 1;
+      if (customizationCount > 0) {
+        customization = {};
+        for (let j = 0; j < customizationCount; j++) {
+          checkBounds(offset, 1, data.length);
+          const custServiceIdLen = data[offset]!;
+          offset += 1;
+          checkBounds(offset, custServiceIdLen, data.length);
+          const custServiceId = new TextDecoder().decode(data.slice(offset, offset + custServiceIdLen));
+          offset += custServiceIdLen;
+
+          checkBounds(offset, 1, data.length);
+          const variantLen = data[offset]!;
+          offset += 1;
+          checkBounds(offset, variantLen, data.length);
+          const variant = new TextDecoder().decode(data.slice(offset, offset + variantLen));
+          offset += variantLen;
+
+          checkBounds(offset, 2, data.length);
+          const descLen = new DataView(data.buffer, data.byteOffset + offset, 2).getUint16(0, false);
+          offset += 2;
+          checkBounds(offset, descLen, data.length);
+          const description = descLen > 0
+            ? new TextDecoder().decode(data.slice(offset, offset + descLen))
+            : undefined;
+          offset += descLen;
+
+          customization[custServiceId] = {
+            variant,
+            ...(description !== undefined ? { description } : {}),
+          };
         }
       }
     }
@@ -556,6 +615,7 @@ export function decodeMetadata(data: Uint8Array): PeerMetadata {
       ...(serviceCategories && Object.keys(serviceCategories).length > 0 ? { serviceCategories } : {}),
       ...(serviceApiProtocols && Object.keys(serviceApiProtocols).length > 0 ? { serviceApiProtocols } : {}),
       ...(canonical && Object.keys(canonical).length > 0 ? { canonical } : {}),
+      ...(customization && Object.keys(customization).length > 0 ? { customization } : {}),
       maxConcurrency,
       currentLoad,
     });

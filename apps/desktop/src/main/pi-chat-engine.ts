@@ -306,6 +306,8 @@ type DiscoverRowEntry = {
   selectionValue: string;
   /** Declared canonical id from provider metadata (v9+). */
   canonical: string | null;
+  /** Provider-declared customization for this service (v9+). */
+  customization?: { variant: string; description?: string } | null;
 };
 
 const CHAT_SESSIONS_DIR = path.join(CHAT_DATA_DIR, 'sessions');
@@ -598,6 +600,9 @@ async function discoverChatServiceCatalog(
         providerCanonical: (p.providerCanonical && typeof p.providerCanonical === 'object')
           ? p.providerCanonical as NetworkPeerAddress['providerCanonical']
           : undefined,
+        providerCustomization: (p.providerCustomization && typeof p.providerCustomization === 'object')
+          ? p.providerCustomization as NetworkPeerAddress['providerCustomization']
+          : undefined,
         defaultInputUsdPerMillion: typeof p.defaultInputUsdPerMillion === 'number' ? p.defaultInputUsdPerMillion : undefined,
         defaultOutputUsdPerMillion: typeof p.defaultOutputUsdPerMillion === 'number' ? p.defaultOutputUsdPerMillion : undefined,
         defaultCachedInputUsdPerMillion: typeof p.defaultCachedInputUsdPerMillion === 'number' ? p.defaultCachedInputUsdPerMillion : undefined,
@@ -837,6 +842,7 @@ async function buildDiscoverRows(
       latencyMs,
       selectionValue: `${entry.provider}\u0001${entry.id}\u0001${peerId}`,
       canonical: typeof entry.canonical === 'string' ? entry.canonical : null,
+      customization: entry.customization ?? null,
     });
   }
   return rows;

@@ -11,6 +11,8 @@ import {
   MAX_SERVICE_CATEGORY_LENGTH,
   MAX_SERVICE_API_PROTOCOLS_PER_SERVICE,
   MAX_CANONICAL_ID_LENGTH,
+  MAX_CUSTOMIZATION_VARIANT_LENGTH,
+  MAX_CUSTOMIZATION_DESCRIPTION_LENGTH,
 } from '../src/discovery/metadata-validator.js';
 import { METADATA_VERSION, type PeerMetadata } from '../src/discovery/peer-metadata.js';
 
@@ -586,6 +588,115 @@ describe('validateMetadata', () => {
       ],
     }));
     expect(errors.some((e) => e.field.includes('canonical'))).toBe(true);
+  });
+
+  it('accepts valid customization map', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            'claude-3-opus': { variant: 'tee-hardened', description: 'Runs in TEE' },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.filter((e) => e.field.includes('customization'))).toHaveLength(0);
+  });
+
+  it('rejects customization key not in services', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            'gpt-4-not-in-services': { variant: 'tee-hardened' },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('customization') && e.message.includes('service listed in'))).toBe(true);
+  });
+
+  it('rejects customization with missing variant', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            // @ts-expect-error testing runtime validation
+            'claude-3-opus': { description: 'no variant' },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('customization') && e.field.includes('variant') && e.message.includes('required'))).toBe(true);
+  });
+
+  it('rejects customization with variant exceeding max length', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            'claude-3-opus': { variant: 'a'.repeat(MAX_CUSTOMIZATION_VARIANT_LENGTH + 1) },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('customization') && e.field.includes('variant') && e.message.includes('exceeds max'))).toBe(true);
+  });
+
+  it('rejects customization with variant violating regex (uppercase)', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            'claude-3-opus': { variant: 'INVALID-CAPS' },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('customization') && e.field.includes('variant') && e.message.includes('lowercase'))).toBe(true);
+  });
+
+  it('rejects customization with description exceeding max length', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          customization: {
+            'claude-3-opus': { variant: 'tee-hardened', description: 'x'.repeat(MAX_CUSTOMIZATION_DESCRIPTION_LENGTH + 1) },
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('customization') && e.field.includes('description') && e.message.includes('exceeds max'))).toBe(true);
   });
 });
 

@@ -31,6 +31,11 @@ export type NetworkPeerAddress = {
    * Shape: { providerName: { serviceId: canonicalId } }
    */
   providerCanonical?: Record<string, Record<string, string>>;
+  /**
+   * Customization declarations per provider (v9+).
+   * Shape: { providerName: { serviceId: { variant, description? } } }
+   */
+  providerCustomization?: Record<string, Record<string, { variant: string; description?: string }>>;
   defaultInputUsdPerMillion?: number;
   defaultOutputUsdPerMillion?: number;
   defaultCachedInputUsdPerMillion?: number;
@@ -51,6 +56,8 @@ export type ChatServiceCatalogEntry = {
   description?: string;
   /** Declared canonical id for this service (v9+). */
   canonical?: string;
+  /** Provider-declared customization for this service (v9+). */
+  customization?: { variant: string; description?: string };
 };
 
 const VALID_CHAT_SERVICE_PROTOCOLS = new Set<string>([
@@ -153,6 +160,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
     const pricingMap = peer.providerPricing;
     const categoriesMap = peer.providerServiceCategories;
     const canonicalMap = peer.providerCanonical;
+    const customizationMap = peer.providerCustomization;
     const defaultInput = peer.defaultInputUsdPerMillion;
     const defaultOutput = peer.defaultOutputUsdPerMillion;
     const defaultCachedInput = peer.defaultCachedInputUsdPerMillion;
@@ -169,6 +177,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
           ...Object.keys(apiProtocols?.[provider]?.services ?? {}),
           ...Object.keys(categoriesMap?.[provider]?.services ?? {}),
           ...Object.keys(canonicalMap?.[provider] ?? {}),
+          ...Object.keys(customizationMap?.[provider] ?? {}),
         ]);
 
         for (const serviceId of providerServiceIds) {
@@ -186,6 +195,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
           );
           const categories = categoriesMap?.[provider]?.services?.[serviceId];
           const canonical = canonicalMap?.[provider]?.[serviceId];
+          const customization = customizationMap?.[provider]?.[serviceId];
 
           results.push({
             id: serviceId,
@@ -200,6 +210,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
             ...(cachedInputUsdPerMillion != null ? { cachedInputUsdPerMillion } : {}),
             ...(categories?.length ? { categories } : {}),
             ...(canonical != null ? { canonical } : {}),
+            ...(customization != null ? { customization } : {}),
           });
         }
       }
@@ -229,6 +240,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
           );
           const categories = categoriesMap?.[fallbackProvider]?.services?.[serviceId];
           const canonical = canonicalMap?.[fallbackProvider]?.[serviceId];
+          const customization = customizationMap?.[fallbackProvider]?.[serviceId];
 
           results.push({
             id: serviceId,
@@ -243,6 +255,7 @@ export function buildChatServiceCatalogFromPeers(peers: NetworkPeerAddress[]): C
             ...(cachedInputUsdPerMillion != null ? { cachedInputUsdPerMillion } : {}),
             ...(categories?.length ? { categories } : {}),
             ...(canonical != null ? { canonical } : {}),
+            ...(customization != null ? { customization } : {}),
           });
         }
       } else {

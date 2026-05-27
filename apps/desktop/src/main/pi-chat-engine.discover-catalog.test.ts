@@ -104,3 +104,59 @@ test('buildChatServiceCatalogFromPeers propagates providerCanonical to catalog e
   assert.equal(entry!.canonical, 'claude-sonnet-4-5',
     'canonical should be propagated from providerCanonical');
 });
+
+test('buildChatServiceCatalogFromPeers propagates providerCustomization to catalog entries', () => {
+  const peerId = 'd'.repeat(40);
+  const catalog = buildChatServiceCatalogFromPeers([{
+    peerId,
+    host: '127.0.0.1',
+    port: 6882,
+    providers: ['anthropic'],
+    providerPricing: {
+      anthropic: {
+        defaults: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+        services: { 'claude-sonnet-4-5-20250929': { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
+      },
+    },
+    providerServiceApiProtocols: {
+      anthropic: { services: { 'claude-sonnet-4-5-20250929': ['anthropic-messages'] } },
+    },
+    providerCustomization: {
+      anthropic: { 'claude-sonnet-4-5-20250929': { variant: 'tee-hardened', description: 'Runs in TEE' } },
+    },
+  }]);
+
+  const entry = catalog.find(
+    (e) => e.provider === 'anthropic' && e.id === 'claude-sonnet-4-5-20250929',
+  );
+
+  assert.ok(entry, 'catalog entry should exist');
+  assert.deepEqual(entry!.customization, { variant: 'tee-hardened', description: 'Runs in TEE' },
+    'customization should be propagated from providerCustomization');
+});
+
+test('buildChatServiceCatalogFromPeers handles entry with no customization', () => {
+  const peerId = 'e'.repeat(40);
+  const catalog = buildChatServiceCatalogFromPeers([{
+    peerId,
+    host: '127.0.0.1',
+    port: 6882,
+    providers: ['anthropic'],
+    providerPricing: {
+      anthropic: {
+        defaults: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+        services: { 'claude-sonnet-4-5-20250929': { inputUsdPerMillion: 3, outputUsdPerMillion: 15 } },
+      },
+    },
+    providerServiceApiProtocols: {
+      anthropic: { services: { 'claude-sonnet-4-5-20250929': ['anthropic-messages'] } },
+    },
+  }]);
+
+  const entry = catalog.find(
+    (e) => e.provider === 'anthropic' && e.id === 'claude-sonnet-4-5-20250929',
+  );
+
+  assert.ok(entry, 'catalog entry should exist');
+  assert.equal(entry!.customization, undefined, 'customization should be undefined when not declared');
+});
