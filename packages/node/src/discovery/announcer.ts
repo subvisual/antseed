@@ -41,6 +41,8 @@ export interface AnnouncerConfig {
     services: string[];
     serviceCategories?: Record<string, string[]>;
     serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+    /** Canonical model id map for discovery deduplication (v9+). */
+    canonical?: Record<string, string>;
     maxConcurrency: number;
     /** Per-instance pricing. Takes precedence over the shared pricing Map. */
     pricing?: {
@@ -212,6 +214,10 @@ export class PeerAnnouncer {
       const normalizedServiceApiProtocols = this._normalizeServiceApiProtocols(p.serviceApiProtocols, p.services);
       if (normalizedServiceApiProtocols) {
         providerAnnouncement.serviceApiProtocols = normalizedServiceApiProtocols;
+      }
+      const normalizedCanonical = this._normalizeCanonical(p.canonical, p.services);
+      if (normalizedCanonical) {
+        providerAnnouncement.canonical = normalizedCanonical;
       }
       return providerAnnouncement;
     });
@@ -397,6 +403,37 @@ export class PeerAnnouncer {
         continue;
       }
       normalized[service] = deduped;
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  private _normalizeCanonical(
+    canonical: Record<string, string> | undefined,
+    supportedServices: string[],
+  ): Record<string, string> | undefined {
+    if (!canonical) {
+      return undefined;
+    }
+
+    const hasWildcardServices = supportedServices.length === 0;
+    const supportedServiceSet = new Set(supportedServices);
+    const CANONICAL_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+    const MAX_CANONICAL_ID_LENGTH = 32;
+    const normalized: Record<string, string> = {};
+    for (const [serviceId, canonicalId] of Object.entries(canonical)) {
+      if (!hasWildcardServices && !supportedServiceSet.has(serviceId)) {
+        continue;
+      }
+      const trimmed = canonicalId.trim().toLowerCase();
+      if (
+        trimmed.length === 0 ||
+        trimmed.length > MAX_CANONICAL_ID_LENGTH ||
+        !CANONICAL_ID_PATTERN.test(trimmed)
+      ) {
+        continue;
+      }
+      normalized[serviceId] = trimmed;
     }
 
     return Object.keys(normalized).length > 0 ? normalized : undefined;

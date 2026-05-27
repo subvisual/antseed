@@ -304,6 +304,8 @@ type DiscoverRowEntry = {
   networkOutputTokens: string | null;
   latencyMs: number | null;
   selectionValue: string;
+  /** Declared canonical id from provider metadata (v9+). */
+  canonical: string | null;
 };
 
 const CHAT_SESSIONS_DIR = path.join(CHAT_DATA_DIR, 'sessions');
@@ -593,6 +595,9 @@ async function discoverChatServiceCatalog(
         providerServiceCategories: (p.providerServiceCategories && typeof p.providerServiceCategories === 'object')
           ? p.providerServiceCategories as NetworkPeerAddress['providerServiceCategories']
           : undefined,
+        providerCanonical: (p.providerCanonical && typeof p.providerCanonical === 'object')
+          ? p.providerCanonical as NetworkPeerAddress['providerCanonical']
+          : undefined,
         defaultInputUsdPerMillion: typeof p.defaultInputUsdPerMillion === 'number' ? p.defaultInputUsdPerMillion : undefined,
         defaultOutputUsdPerMillion: typeof p.defaultOutputUsdPerMillion === 'number' ? p.defaultOutputUsdPerMillion : undefined,
         defaultCachedInputUsdPerMillion: typeof p.defaultCachedInputUsdPerMillion === 'number' ? p.defaultCachedInputUsdPerMillion : undefined,
@@ -831,6 +836,7 @@ async function buildDiscoverRows(
       networkOutputTokens,
       latencyMs,
       selectionValue: `${entry.provider}\u0001${entry.id}\u0001${peerId}`,
+      canonical: typeof entry.canonical === 'string' ? entry.canonical : null,
     });
   }
   return rows;

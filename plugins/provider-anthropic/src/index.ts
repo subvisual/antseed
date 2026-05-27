@@ -1,5 +1,5 @@
 import type { AntseedProviderPlugin, Provider } from '@antseed/node';
-import { BaseProvider, StaticTokenProvider, parseServiceAliasMap, parseNonNegativeNumber, parseServicePricingJson, buildServiceApiProtocols } from '@antseed/provider-core';
+import { BaseProvider, StaticTokenProvider, parseServiceAliasMap, parseNonNegativeNumber, parseServicePricingJson, buildServiceApiProtocols, buildCanonicalMap } from '@antseed/provider-core';
 
 const plugin: AntseedProviderPlugin = {
   name: 'anthropic',
@@ -45,6 +45,7 @@ const plugin: AntseedProviderPlugin = {
 
     const tokenProvider = new StaticTokenProvider(apiKey);
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'anthropic-messages');
+    const canonical = buildCanonicalMap(allowedServices);
     const serviceRewriteMap = parseServiceAliasMap(config['ANTSEED_SERVICE_ALIAS_MAP_JSON']);
 
     return new BaseProvider({
@@ -52,6 +53,7 @@ const plugin: AntseedProviderPlugin = {
       services: allowedServices,
       pricing,
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       relay: {
         baseUrl: 'https://api.anthropic.com',
         authHeaderName: 'x-api-key',

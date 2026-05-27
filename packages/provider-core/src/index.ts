@@ -11,6 +11,7 @@ export {
   parseCsv,
   parseJsonObject,
   buildServiceApiProtocols,
+  buildCanonicalMap,
 } from './config-utils.js';
 export {
   stripRelayRequestHeaders,

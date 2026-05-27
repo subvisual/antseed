@@ -9,6 +9,7 @@ const SERVICE_CATEGORIES_METADATA_VERSION = 3;
 const SERVICE_API_PROTOCOLS_METADATA_VERSION = 4;
 const PUBLIC_ADDRESS_METADATA_VERSION = 5;
 const SELLER_CONTRACT_METADATA_VERSION = 8;
+const CANONICAL_METADATA_VERSION = 9;
 
 /**
  * Encode metadata into binary format:
@@ -181,6 +182,22 @@ function encodeBody(metadata: PeerMetadata): Uint8Array {
           parts.push(new Uint8Array([protocolBytes.length]));
           parts.push(protocolBytes);
         }
+      }
+    }
+
+    // canonical map (v9+) — length-prefixed map of serviceId → canonicalId
+    if (metadata.version >= CANONICAL_METADATA_VERSION) {
+      const canonicalEntries = Object.entries(p.canonical ?? {})
+        .filter(([k, v]) => k.length > 0 && v.length > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+      parts.push(new Uint8Array([canonicalEntries.length]));
+      for (const [serviceId, canonicalId] of canonicalEntries) {
+        const serviceIdBytes = new TextEncoder().encode(serviceId);
+        parts.push(new Uint8Array([serviceIdBytes.length]));
+        parts.push(serviceIdBytes);
+        const canonicalIdBytes = new TextEncoder().encode(canonicalId);
+        parts.push(new Uint8Array([canonicalIdBytes.length]));
+        parts.push(canonicalIdBytes);
       }
     }
 
@@ -487,6 +504,34 @@ export function decodeMetadata(data: Uint8Array): PeerMetadata {
       }
     }
 
+    // canonical map (v9+)
+    let canonical: Record<string, string> | undefined;
+    if (version >= CANONICAL_METADATA_VERSION) {
+      checkBounds(offset, 1, data.length);
+      const canonicalCount = data[offset]!;
+      offset += 1;
+      if (canonicalCount > 0) {
+        canonical = {};
+        for (let j = 0; j < canonicalCount; j++) {
+          checkBounds(offset, 1, data.length);
+          const serviceIdLen = data[offset]!;
+          offset += 1;
+          checkBounds(offset, serviceIdLen, data.length);
+          const canonicalServiceId = new TextDecoder().decode(data.slice(offset, offset + serviceIdLen));
+          offset += serviceIdLen;
+
+          checkBounds(offset, 1, data.length);
+          const canonicalIdLen = data[offset]!;
+          offset += 1;
+          checkBounds(offset, canonicalIdLen, data.length);
+          const canonicalId = new TextDecoder().decode(data.slice(offset, offset + canonicalIdLen));
+          offset += canonicalIdLen;
+
+          canonical[canonicalServiceId] = canonicalId;
+        }
+      }
+    }
+
     // maxConcurrency: 2 bytes uint16
     checkBounds(offset, 2, data.length);
     const maxConcView = new DataView(data.buffer, data.byteOffset + offset, 2);
@@ -510,6 +555,7 @@ export function decodeMetadata(data: Uint8Array): PeerMetadata {
       ...(servicePricingCount > 0 ? { servicePricing } : {}),
       ...(serviceCategories && Object.keys(serviceCategories).length > 0 ? { serviceCategories } : {}),
       ...(serviceApiProtocols && Object.keys(serviceApiProtocols).length > 0 ? { serviceApiProtocols } : {}),
+      ...(canonical && Object.keys(canonical).length > 0 ? { canonical } : {}),
       maxConcurrency,
       currentLoad,
     });

@@ -1,11 +1,20 @@
 /**
  * canonical-model.ts — pure helper for normalising model identifiers.
  *
- * Conservative heuristic: better to miss a collapse than to wrongly merge
- * two distinct models. A v1.5 protocol `canonical` field will supplant this.
+ * v1.5: `resolveCanonicalKey` uses a precedence ladder:
+ *   1. Declared `canonical` from the provider's v9+ metadata (highest).
+ *   2. CURATED_CANONICAL_TABLE lookup (issue 2 fills this in).
+ *   3. `canonicalizeModelId` fuzzy heuristic (v1 fallback).
  */
 
 import type { DiscoverRow } from './state.js';
+
+/**
+ * Placeholder for the curated canonical table.
+ * Issue 2 populates this with well-known model name normalizations.
+ * Exported so tests can verify the table is reachable.
+ */
+export const CURATED_CANONICAL_TABLE: Record<string, string> = {};
 
 /**
  * Known provider prefixes to strip. Keep the list short and obvious.
@@ -23,7 +32,7 @@ const PROVIDER_PREFIXES = [
 ] as const;
 
 /**
- * Return the canonical form of a model identifier.
+ * Return the canonical form of a model identifier using the fuzzy heuristic.
  *
  * Steps:
  *  1. Lowercase + trim.
@@ -44,15 +53,35 @@ export function canonicalizeModelId(serviceId: string, _provider?: string): stri
 }
 
 /**
+ * Resolve the canonical key for a DiscoverRow using the precedence ladder:
+ *   1. Declared `canonical` field from the provider's v9+ metadata.
+ *   2. CURATED_CANONICAL_TABLE lookup by serviceId.
+ *   3. `canonicalizeModelId` fuzzy heuristic (v1 fallback).
+ */
+export function resolveCanonicalKey(row: DiscoverRow): string {
+  // 1. Provider-declared canonical (highest priority)
+  if (typeof row.canonical === 'string' && row.canonical.length > 0) {
+    return row.canonical;
+  }
+  // 2. Curated table lookup
+  const curated = CURATED_CANONICAL_TABLE[row.serviceId.toLowerCase().trim()];
+  if (curated) {
+    return curated;
+  }
+  // 3. Fuzzy heuristic fallback
+  return canonicalizeModelId(row.serviceId, row.provider);
+}
+
+/**
  * Group discover rows by their canonical model key.
  *
- * Uses `serviceId` (not `serviceLabel`) as the grouping key so that
- * display-only label differences never affect deduplication.
+ * Uses `resolveCanonicalKey` (precedence: declared > curated > fuzzy)
+ * so that display-only label differences never affect deduplication.
  */
 export function groupByCanonical(rows: DiscoverRow[]): Map<string, DiscoverRow[]> {
   const groups = new Map<string, DiscoverRow[]>();
   for (const row of rows) {
-    const key = canonicalizeModelId(row.serviceId, row.provider);
+    const key = resolveCanonicalKey(row);
     const bucket = groups.get(key);
     if (bucket !== undefined) {
       bucket.push(row);

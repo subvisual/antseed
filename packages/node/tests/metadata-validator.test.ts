@@ -10,6 +10,7 @@ import {
   MAX_PUBLIC_ADDRESS_LENGTH,
   MAX_SERVICE_CATEGORY_LENGTH,
   MAX_SERVICE_API_PROTOCOLS_PER_SERVICE,
+  MAX_CANONICAL_ID_LENGTH,
 } from '../src/discovery/metadata-validator.js';
 import { METADATA_VERSION, type PeerMetadata } from '../src/discovery/peer-metadata.js';
 
@@ -512,6 +513,79 @@ describe('validateMetadata', () => {
   it("accepts a well-formed sellerContract", () => {
     const errors = validateMetadata(validMetadata({ sellerContract: "bb".repeat(20) }));
     expect(errors.filter(e => e.field === "sellerContract")).toHaveLength(0);
+  });
+
+  it('accepts valid canonical map where keys are in services', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus', 'claude-3-sonnet'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          canonical: {
+            'claude-3-opus': 'claude-3-opus',
+            'claude-3-sonnet': 'claude-3',
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.filter((e) => e.field.includes('canonical'))).toHaveLength(0);
+  });
+
+  it('rejects canonical key not in services', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          canonical: {
+            'unknown-service': 'claude-3-opus',
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('canonical') && e.message.includes('service listed in'))).toBe(true);
+  });
+
+  it('rejects canonical value exceeding max length', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          canonical: {
+            'claude-3-opus': 'x'.repeat(MAX_CANONICAL_ID_LENGTH + 1),
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('canonical') && e.message.includes('exceeds max'))).toBe(true);
+  });
+
+  it('rejects canonical value with invalid characters', () => {
+    const errors = validateMetadata(validMetadata({
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-opus'],
+          defaultPricing: { inputUsdPerMillion: 15, outputUsdPerMillion: 75 },
+          canonical: {
+            'claude-3-opus': 'INVALID_CAPS',
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    }));
+    expect(errors.some((e) => e.field.includes('canonical'))).toBe(true);
   });
 });
 

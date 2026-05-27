@@ -85,3 +85,25 @@ export function buildServiceApiProtocols(
   if (services.length === 0) return undefined;
   return Object.fromEntries(services.map((service) => [service, [protocol]]));
 }
+
+/**
+ * Build a canonical map for a list of services.
+ *
+ * The default identity mapping declares each serviceId as its own canonical.
+ * For aliased or dated variants, callers can pass an `overrides` map to
+ * point specific serviceIds at a stable base name.
+ *
+ * @param services  - list of serviceIds announced by the provider
+ * @param overrides - optional map of { serviceId: canonicalId } for non-identity entries
+ */
+export function buildCanonicalMap(
+  services: string[],
+  overrides?: Record<string, string>,
+): Record<string, string> | undefined {
+  if (services.length === 0) return undefined;
+  const map: Record<string, string> = {};
+  for (const service of services) {
+    map[service] = overrides?.[service] ?? service;
+  }
+  return map;
+}

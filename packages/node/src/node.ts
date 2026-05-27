@@ -1173,6 +1173,7 @@ export class AntseedNode extends EventEmitter {
           services: p.services,
           ...(p.serviceCategories ? { serviceCategories: { ...p.serviceCategories } } : {}),
           ...(p.serviceApiProtocols ? { serviceApiProtocols: { ...p.serviceApiProtocols } } : {}),
+          ...(p.canonical ? { canonical: { ...p.canonical } } : {}),
           maxConcurrency: p.maxConcurrency,
           pricing: {
             defaults: {
@@ -1616,6 +1617,7 @@ export class AntseedNode extends EventEmitter {
     const providerPricingEntries: NonNullable<PeerInfo["providerPricing"]> = {};
     const providerServiceCategoryEntries: NonNullable<PeerInfo["providerServiceCategories"]> = {};
     const providerServiceApiProtocolEntries: NonNullable<PeerInfo["providerServiceApiProtocols"]> = {};
+    const providerCanonicalEntries: NonNullable<PeerInfo["providerCanonical"]> = {};
 
     for (const providerAnnouncement of result.metadata.providers) {
       const provName = providerAnnouncement.provider;
@@ -1670,11 +1672,22 @@ export class AntseedNode extends EventEmitter {
           providerServiceApiProtocolEntries[provName] = { services: newEntries };
         }
       }
+
+      if (providerAnnouncement.canonical && Object.keys(providerAnnouncement.canonical).length > 0) {
+        const existingCanonical = providerCanonicalEntries[provName];
+        const newEntries = { ...providerAnnouncement.canonical };
+        if (existingCanonical) {
+          Object.assign(existingCanonical.services, newEntries);
+        } else {
+          providerCanonicalEntries[provName] = { services: newEntries };
+        }
+      }
     }
 
     const hasProviderPricing = Object.keys(providerPricingEntries).length > 0;
     const hasProviderServiceCategories = Object.keys(providerServiceCategoryEntries).length > 0;
     const hasProviderServiceApiProtocols = Object.keys(providerServiceApiProtocolEntries).length > 0;
+    const hasProviderCanonical = Object.keys(providerCanonicalEntries).length > 0;
 
     return {
       peerId: result.metadata.peerId,
@@ -1692,6 +1705,7 @@ export class AntseedNode extends EventEmitter {
       ...(hasProviderPricing ? { providerPricing: providerPricingEntries } : {}),
       ...(hasProviderServiceCategories ? { providerServiceCategories: providerServiceCategoryEntries } : {}),
       ...(hasProviderServiceApiProtocols ? { providerServiceApiProtocols: providerServiceApiProtocolEntries } : {}),
+      ...(hasProviderCanonical ? { providerCanonical: providerCanonicalEntries } : {}),
       defaultInputUsdPerMillion: firstProvider?.defaultPricing.inputUsdPerMillion,
       defaultOutputUsdPerMillion: firstProvider?.defaultPricing.outputUsdPerMillion,
       defaultCachedInputUsdPerMillion: firstProvider?.defaultPricing.cachedInputUsdPerMillion,

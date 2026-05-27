@@ -14,6 +14,8 @@ export interface BaseProviderConfig {
   services: string[];
   pricing: Provider['pricing'];
   serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+  /** Canonical model id map for discovery deduplication (v9+). */
+  canonical?: Record<string, string>;
   relay: RelayConfig;
 }
 
@@ -26,6 +28,7 @@ export class BaseProvider implements Provider {
   readonly services: string[];
   readonly pricing: Provider['pricing'];
   readonly serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+  readonly canonical?: Record<string, string>;
   readonly maxConcurrency: number;
 
   private readonly _relay: HttpRelay;
@@ -38,6 +41,7 @@ export class BaseProvider implements Provider {
     this.services = config.services;
     this.pricing = config.pricing;
     this.serviceApiProtocols = config.serviceApiProtocols;
+    this.canonical = config.canonical;
     this.maxConcurrency = config.relay.maxConcurrency;
 
     this._relay = new HttpRelay(config.relay, {

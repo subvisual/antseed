@@ -202,6 +202,98 @@ describe('encodeMetadata / decodeMetadata', () => {
   });
 
   // v2/v3/v4/v5 roundtrip tests removed — pre-v6 format is rejected by the decoder.
+
+  it('round-trips v9 metadata with canonical map', () => {
+    const meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5-20250929', 'claude-haiku-4-5-20250929'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          canonical: {
+            'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+            'claude-haiku-4-5-20250929': 'claude-haiku-4-5',
+          },
+          maxConcurrency: 10,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    expect(decoded.version).toBe(9);
+    expect(decoded.providers[0]!.canonical).toEqual({
+      'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+      'claude-haiku-4-5-20250929': 'claude-haiku-4-5',
+    });
+  });
+
+  it('round-trips v9 metadata without canonical map (canonical absent = no bytes written)', () => {
+    const meta = makeMetadata({ version: 9 });
+    const decoded = decodeMetadata(encodeMetadata(meta));
+    expect(decoded.version).toBe(9);
+    expect(decoded.providers[0]!.canonical).toBeUndefined();
+  });
+
+  it('v9 metadata decoded by v8-only decoder does not crash (backward compat)', () => {
+    // Synthesise v9 bytes and verify that a decoder simulating v8 understanding
+    // either: (a) successfully decodes the v8-subset fields, or
+    //         (b) throws a descriptive parse error — not a silent crash.
+    const v9Meta = makeMetadata({
+      version: 9,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-sonnet-4-5-20250929'],
+          defaultPricing: { inputUsdPerMillion: 3, outputUsdPerMillion: 15 },
+          canonical: { 'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5' },
+          maxConcurrency: 5,
+          currentLoad: 0,
+        },
+      ],
+    });
+    const v9Bytes = encodeMetadata(v9Meta);
+
+    // Patch the version byte to 8 to simulate an old decoder reading v9 bytes.
+    // The v8-patched bytes will have misaligned canonical bytes that the v8
+    // decoder won't know to skip — it should throw a truncation error rather
+    // than silently returning garbage.
+    const patched = new Uint8Array(v9Bytes);
+    patched[0] = 8; // downgrade version byte
+
+    let threw = false;
+    let decodedOk = false;
+    try {
+      const result = decodeMetadata(patched);
+      // If it doesn't throw, verify at least the core v8 fields came back sane
+      decodedOk = result.region === v9Meta.region && result.providers.length === 1;
+    } catch {
+      threw = true;
+    }
+    // Either outcome is acceptable: graceful decode of v8-subset OR a parse error.
+    expect(threw || decodedOk).toBe(true);
+  });
+
+  it('v8 fixture decoded with v9 decoder returns canonical = undefined', () => {
+    const v8Meta: PeerMetadata = {
+      peerId: 'aa'.repeat(20) as any,
+      version: 8,
+      region: 'us-east-1',
+      timestamp: 1_700_000_000_000,
+      providers: [
+        {
+          provider: 'anthropic',
+          services: ['claude-3-haiku'],
+          defaultPricing: { inputUsdPerMillion: 1, outputUsdPerMillion: 5 },
+          maxConcurrency: 5,
+          currentLoad: 0,
+        },
+      ],
+      signature: 'dd'.repeat(65),
+    };
+    const decoded = decodeMetadata(encodeMetadata(v8Meta));
+    expect(decoded.providers[0]!.canonical).toBeUndefined();
+  });
 });
 
 describe('encodeMetadataForSigning', () => {

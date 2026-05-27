@@ -15,7 +15,9 @@ export const MAX_DISPLAY_NAME_LENGTH = 64;
 export const MAX_SERVICE_CATEGORIES_PER_SERVICE = 8;
 export const MAX_SERVICE_CATEGORY_LENGTH = 32;
 export const MAX_SERVICE_API_PROTOCOLS_PER_SERVICE = 4;
+export const MAX_CANONICAL_ID_LENGTH = 32;
 const SERVICE_CATEGORY_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const CANONICAL_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const SERVICE_API_PROTOCOL_SET = new Set<string>(WELL_KNOWN_SERVICE_API_PROTOCOLS);
 
 export interface ValidationError {
@@ -290,6 +292,37 @@ export function validateMetadata(metadata: PeerMetadata): ValidationError[] {
             });
           }
           deduped.add(normalized);
+        }
+      }
+    }
+
+    // canonical (v9+) — keys must be in services; values must match serviceId regex
+    if (p.canonical !== undefined) {
+      for (const [serviceId, canonicalId] of Object.entries(p.canonical)) {
+        if (!hasWildcardServices && !p.services.includes(serviceId)) {
+          errors.push({
+            field: `providers[${i}].canonical.${serviceId}`,
+            message: "Canonical key must reference a service listed in providers[].services",
+          });
+        }
+        if (typeof canonicalId !== "string" || canonicalId.length === 0) {
+          errors.push({
+            field: `providers[${i}].canonical.${serviceId}`,
+            message: "Canonical value must be a non-empty string",
+          });
+          continue;
+        }
+        if (canonicalId.length > MAX_CANONICAL_ID_LENGTH) {
+          errors.push({
+            field: `providers[${i}].canonical.${serviceId}`,
+            message: `Canonical id length ${canonicalId.length} exceeds max ${MAX_CANONICAL_ID_LENGTH}`,
+          });
+        }
+        if (!CANONICAL_ID_PATTERN.test(canonicalId)) {
+          errors.push({
+            field: `providers[${i}].canonical.${serviceId}`,
+            message: "Canonical id must use lowercase letters, digits, or hyphen and start with alphanumeric",
+          });
         }
       }
     }

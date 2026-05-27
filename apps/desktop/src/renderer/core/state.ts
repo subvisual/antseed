@@ -138,6 +138,13 @@ export type DiscoverRow = {
 
   // Derived — encoded selection for existing chat open path
   selectionValue: string;
+
+  /**
+   * Declared canonical id from the provider's v9+ metadata.
+   * When set, takes highest precedence in groupByCanonical deduplication.
+   * Null means the provider did not declare a canonical (v8 or earlier).
+   */
+  canonical?: string | null;
 };
 
 export type ActiveChannelInfo = {

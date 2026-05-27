@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalizeModelId, groupByCanonical } from './canonical-model.js';
+import { canonicalizeModelId, groupByCanonical, resolveCanonicalKey, CURATED_CANONICAL_TABLE } from './canonical-model.js';
 import type { DiscoverRow } from './state.js';
 
 // ---------------------------------------------------------------------------
@@ -169,4 +169,80 @@ test('groupByCanonical: uses serviceId, not serviceLabel, for grouping', () => {
   const groups = groupByCanonical(rows);
   assert.equal(groups.size, 1);
   assert.equal(groups.get('gpt-4o')!.length, 2);
+});
+
+// ---------------------------------------------------------------------------
+// resolveCanonicalKey — precedence ladder
+// ---------------------------------------------------------------------------
+
+test('resolveCanonicalKey: declared canonical takes highest priority', () => {
+  const row = makeRow({
+    serviceId: 'claude-sonnet-4-5-20250929',
+    canonical: 'claude-sonnet-4-5',
+  });
+  assert.equal(resolveCanonicalKey(row), 'claude-sonnet-4-5');
+});
+
+test('resolveCanonicalKey: null canonical falls through to fuzzy heuristic', () => {
+  const row = makeRow({
+    serviceId: 'anthropic/claude-3-opus-20240229',
+    canonical: null,
+  });
+  // fuzzy heuristic strips the "anthropic/" prefix
+  assert.equal(resolveCanonicalKey(row), 'claude-3-opus-20240229');
+});
+
+test('resolveCanonicalKey: undefined canonical falls through to fuzzy heuristic', () => {
+  const row = makeRow({
+    serviceId: 'openai/gpt-4o',
+    canonical: undefined,
+  });
+  assert.equal(resolveCanonicalKey(row), 'gpt-4o');
+});
+
+test('resolveCanonicalKey: empty string canonical falls through to fuzzy heuristic', () => {
+  const row = makeRow({
+    serviceId: 'gpt-4o-mini',
+    canonical: '',
+  });
+  assert.equal(resolveCanonicalKey(row), 'gpt-4o-mini');
+});
+
+test('CURATED_CANONICAL_TABLE: is exported and starts empty (placeholder for issue 2)', () => {
+  assert.equal(typeof CURATED_CANONICAL_TABLE, 'object');
+  assert.equal(Object.keys(CURATED_CANONICAL_TABLE).length, 0);
+});
+
+test('groupByCanonical: declared canonical collapses dated and base service into one group', () => {
+  const rows: DiscoverRow[] = [
+    makeRow({
+      serviceId: 'claude-sonnet-4-5-20250929',
+      canonical: 'claude-sonnet-4-5',
+      rowKey: 'peer1:dated',
+    }),
+    makeRow({
+      serviceId: 'claude-sonnet-4-5',
+      canonical: 'claude-sonnet-4-5',
+      rowKey: 'peer2:base',
+      peerId: 'peer2',
+    }),
+  ];
+  const groups = groupByCanonical(rows);
+  assert.equal(groups.size, 1);
+  assert.equal(groups.get('claude-sonnet-4-5')!.length, 2);
+});
+
+test('groupByCanonical: declared canonical is preferred over fuzzy heuristic', () => {
+  // Without canonical, "anthropic/claude-3-opus" → "claude-3-opus" (fuzzy strips prefix)
+  // With canonical "claude-3-opus-stable", the group key should be the declared value
+  const rows: DiscoverRow[] = [
+    makeRow({
+      serviceId: 'anthropic/claude-3-opus',
+      canonical: 'claude-3-opus-stable',
+      rowKey: 'peer1:svc',
+    }),
+  ];
+  const groups = groupByCanonical(rows);
+  assert.equal(groups.size, 1);
+  assert.ok(groups.has('claude-3-opus-stable'), 'should use declared canonical as key');
 });

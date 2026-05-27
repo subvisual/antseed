@@ -277,6 +277,9 @@ export function parsePersistedPeers(
     if (entry.providerServiceApiProtocols && typeof entry.providerServiceApiProtocols === 'object') {
       peer.providerServiceApiProtocols = entry.providerServiceApiProtocols as PeerInfo['providerServiceApiProtocols']
     }
+    if (entry.providerCanonical && typeof entry.providerCanonical === 'object') {
+      peer.providerCanonical = entry.providerCanonical as PeerInfo['providerCanonical']
+    }
     if (typeof entry.defaultInputUsdPerMillion === 'number') {
       peer.defaultInputUsdPerMillion = entry.defaultInputUsdPerMillion
     }
@@ -637,6 +640,7 @@ export class BuyerProxy {
         providerPricing: p.providerPricing ?? null,
         providerServiceCategories: p.providerServiceCategories ?? null,
         providerServiceApiProtocols: p.providerServiceApiProtocols ?? null,
+        providerCanonical: p.providerCanonical ?? null,
         defaultInputUsdPerMillion: p.defaultInputUsdPerMillion ?? 0,
         defaultOutputUsdPerMillion: p.defaultOutputUsdPerMillion ?? 0,
         defaultCachedInputUsdPerMillion: p.defaultCachedInputUsdPerMillion ?? null,

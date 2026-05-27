@@ -36,6 +36,13 @@ export interface Provider {
   /** Optional per-service API protocol support advertised via discovery metadata. */
   serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
 
+  /**
+   * Canonical model id map for discovery deduplication (v9+).
+   * Maps serviceId → canonicalId. For the identity case, the value equals
+   * the key. Aliased/dated variants should point at the stable base name.
+   */
+  canonical?: Record<string, string>;
+
   /** Maximum concurrent requests this provider can handle */
   maxConcurrency: number;
 

@@ -43,6 +43,11 @@ export interface ProviderServiceApiProtocolMatrixEntry {
   services: Record<string, ServiceApiProtocol[]>;
 }
 
+export interface ProviderCanonicalMatrixEntry {
+  /** Maps serviceId → canonicalId, declared by the provider (v9+). */
+  services: Record<string, string>;
+}
+
 /** Information about a known peer. */
 export interface PeerInfo {
   /** Unique peer identifier (EVM address, 40 hex chars). */
@@ -72,6 +77,8 @@ export interface PeerInfo {
   providerServiceCategories?: Record<string, ProviderServiceCategoryMatrixEntry>;
   /** Provider/service API protocols announced by seller. */
   providerServiceApiProtocols?: Record<string, ProviderServiceApiProtocolMatrixEntry>;
+  /** Canonical model id map per provider (v9+). */
+  providerCanonical?: Record<string, ProviderCanonicalMatrixEntry>;
   /** Deterministic fallback default input price (USD per 1M tokens). */
   defaultInputUsdPerMillion?: number;
   /** Deterministic fallback default output price (USD per 1M tokens). */

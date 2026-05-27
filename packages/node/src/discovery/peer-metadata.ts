@@ -3,7 +3,7 @@ import type { PeerOffering } from "../types/capability.js";
 import type { ServiceApiProtocol } from "../types/service-api.js";
 import { WELL_KNOWN_SERVICE_API_PROTOCOLS } from "../types/service-api.js";
 
-export const METADATA_VERSION = 8;
+export const METADATA_VERSION = 9;
 export const WELL_KNOWN_SERVICE_CATEGORIES = [
   "privacy",
   "legal",
@@ -28,6 +28,16 @@ export interface ProviderAnnouncement {
   servicePricing?: Record<string, TokenPricingUsdPerMillion>;
   serviceCategories?: Record<string, string[]>;
   serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+  /**
+   * Canonical model identifiers declared by the provider (v9+).
+   * Maps serviceId → canonical base name used for deduplication on the
+   * buyer side. For example, a provider announcing
+   * `{ "claude-sonnet-4-5-20250929": "claude-sonnet-4-5" }` declares that
+   * its dated variant should be grouped with the stable base name.
+   * Keys must appear in the provider's `services` array; values must match
+   * the serviceId regex (^[a-z0-9][a-z0-9-]*$, max 32 chars).
+   */
+  canonical?: Record<string, string>;
   maxConcurrency: number;
   currentLoad: number;
 }
