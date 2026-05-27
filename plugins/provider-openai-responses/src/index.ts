@@ -14,6 +14,7 @@ import type {
 import {
   BaseProvider,
   DEFAULT_HTTP_TIMEOUT_MS,
+  buildCanonicalMap,
   buildServiceApiProtocols,
   parseCsv,
   parseNonNegativeNumber,
@@ -392,6 +393,7 @@ class OpenAIResponsesProvider implements Provider {
   readonly services: string[];
   readonly pricing: Provider['pricing'];
   readonly serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+  readonly canonical?: Record<string, string>;
   readonly maxConcurrency: number;
 
   private readonly inner: BaseProvider;
@@ -402,6 +404,7 @@ class OpenAIResponsesProvider implements Provider {
     services: string[];
     pricing: Provider['pricing'];
     serviceApiProtocols?: Record<string, ServiceApiProtocol[]>;
+    canonical?: Record<string, string>;
     maxConcurrency: number;
     baseUrl: string;
     authFilePath: string;
@@ -411,6 +414,7 @@ class OpenAIResponsesProvider implements Provider {
     this.services = config.services;
     this.pricing = config.pricing;
     this.serviceApiProtocols = config.serviceApiProtocols;
+    this.canonical = config.canonical;
     this.maxConcurrency = config.maxConcurrency;
     this.serviceRewriteMap = config.serviceRewriteMap;
 
@@ -545,12 +549,14 @@ const plugin: AntseedProviderPlugin = {
     const baseUrl = config['OPENAI_RESPONSES_BASE_URL']?.trim() || DEFAULT_BASE_URL;
     const serviceRewriteMap = parseServiceAliasMap(config['ANTSEED_SERVICE_ALIAS_MAP_JSON']);
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'openai-responses');
+    const canonical = buildCanonicalMap(allowedServices);
 
     return new OpenAIResponsesProvider({
       name: 'openai-responses',
       services: allowedServices,
       pricing,
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       maxConcurrency,
       baseUrl,
       authFilePath,

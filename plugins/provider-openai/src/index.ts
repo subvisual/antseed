@@ -2,6 +2,7 @@ import type { AntseedProviderPlugin, Provider } from '@antseed/node';
 import {
   BaseProvider,
   StaticTokenProvider,
+  buildCanonicalMap,
   buildServiceApiProtocols,
   parseCsv,
   parseJsonObject,
@@ -120,6 +121,7 @@ const plugin: AntseedProviderPlugin = {
 
     const tokenProvider = new StaticTokenProvider(apiKey);
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'openai-chat-completions');
+    const canonical = buildCanonicalMap(allowedServices);
     const serviceRewriteMap = parseServiceAliasMap(config['ANTSEED_SERVICE_ALIAS_MAP_JSON']);
     const pathRewrite = parseJsonObject(config['OPENAI_PATH_REWRITE_JSON'], 'OPENAI_PATH_REWRITE_JSON') as Record<string, string> | undefined;
 
@@ -128,6 +130,7 @@ const plugin: AntseedProviderPlugin = {
       services: allowedServices,
       pricing,
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       relay: {
         baseUrl,
         authHeaderName: 'authorization',

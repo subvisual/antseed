@@ -1,5 +1,5 @@
-import type { AntseedProviderPlugin, ConfigField, ServiceApiProtocol } from '@antseed/node';
-import { BaseProvider, OAuthTokenProvider, StaticTokenProvider, parseServiceAliasMap, parseNonNegativeNumber, parseServicePricingJson } from '@antseed/provider-core';
+import type { AntseedProviderPlugin, ConfigField } from '@antseed/node';
+import { BaseProvider, OAuthTokenProvider, StaticTokenProvider, buildCanonicalMap, buildServiceApiProtocols, parseServiceAliasMap, parseNonNegativeNumber, parseServicePricingJson } from '@antseed/provider-core';
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 const CLAUDE_CODE_VERSION = '2.1.75';
@@ -21,14 +21,6 @@ const configSchema: ConfigField[] = [
   { key: 'ANTSEED_SERVICE_PRICING_JSON', label: 'Service Pricing Map', type: 'string', required: false, description: 'JSON map of announced service → per-service pricing' },
   { key: 'ANTSEED_THROTTLE_MIN_TIME_MS', label: 'Throttle Min Time', type: 'number', required: false, description: 'Minimum ms between upstream requests (e.g. 1000)' },
 ];
-
-function buildServiceApiProtocols(
-  services: string[],
-  protocol: ServiceApiProtocol,
-): Record<string, ServiceApiProtocol[]> | undefined {
-  if (services.length === 0) return undefined;
-  return Object.fromEntries(services.map((service) => [service, [protocol]]));
-}
 
 const plugin: AntseedProviderPlugin = {
   name: 'claude-oauth',
@@ -69,6 +61,7 @@ const plugin: AntseedProviderPlugin = {
     const allowedServices = (config['ANTSEED_ALLOWED_SERVICES'] ?? '')
       .split(',').map(s => s.trim()).filter(Boolean);
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'anthropic-messages');
+    const canonical = buildCanonicalMap(allowedServices);
     const serviceRewriteMap = parseServiceAliasMap(config['ANTSEED_SERVICE_ALIAS_MAP_JSON']);
     const servicePricing = parseServicePricingJson(config['ANTSEED_SERVICE_PRICING_JSON']);
     const throttleMinTime = parseInt(config['ANTSEED_THROTTLE_MIN_TIME_MS'] ?? '0', 10);
@@ -85,6 +78,7 @@ const plugin: AntseedProviderPlugin = {
         ...(servicePricing ? { services: servicePricing } : {}),
       },
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       relay: {
         baseUrl: 'https://api.anthropic.com',
         authHeaderName: 'authorization',

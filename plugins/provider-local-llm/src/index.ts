@@ -1,21 +1,5 @@
-import type { AntseedProviderPlugin, Provider, ServiceApiProtocol } from '@antseed/node';
-import { BaseProvider, StaticTokenProvider, parseServiceAliasMap } from '@antseed/provider-core';
-
-function parseNonNegativeNumber(raw: string | undefined, key: string, fallback: number): number {
-  const parsed = raw === undefined ? fallback : Number.parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`${key} must be a non-negative number`);
-  }
-  return parsed;
-}
-
-function buildServiceApiProtocols(
-  services: string[],
-  protocol: ServiceApiProtocol,
-): Record<string, ServiceApiProtocol[]> | undefined {
-  if (services.length === 0) return undefined;
-  return Object.fromEntries(services.map((service) => [service, [protocol]]));
-}
+import type { AntseedProviderPlugin, Provider } from '@antseed/node';
+import { BaseProvider, StaticTokenProvider, buildCanonicalMap, buildServiceApiProtocols, parseNonNegativeNumber, parseServiceAliasMap } from '@antseed/provider-core';
 
 const plugin: AntseedProviderPlugin = {
   name: 'local-llm',
@@ -55,6 +39,7 @@ const plugin: AntseedProviderPlugin = {
       ? config['ANTSEED_ALLOWED_SERVICES'].split(',').map((s: string) => s.trim())
       : [];
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'openai-chat-completions');
+    const canonical = buildCanonicalMap(allowedServices);
     const serviceRewriteMap = parseServiceAliasMap(config['ANTSEED_SERVICE_ALIAS_MAP_JSON']);
 
     const tokenProvider = apiKey ? new StaticTokenProvider(apiKey) : undefined;
@@ -64,6 +49,7 @@ const plugin: AntseedProviderPlugin = {
       services: allowedServices,
       pricing,
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       relay: {
         baseUrl,
         authHeaderName: 'authorization',

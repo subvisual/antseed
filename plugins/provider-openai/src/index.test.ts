@@ -58,6 +58,24 @@ describe('provider-openai plugin', () => {
     expect(provider.maxConcurrency).toBe(5);
   });
 
+  it('emits non-empty canonical map when services are configured', () => {
+    const provider = plugin.createProvider({
+      OPENAI_API_KEY: 'sk-test-key',
+      ANTSEED_ALLOWED_SERVICES: 'gpt-4o,gpt-4o-mini',
+    });
+    expect(provider.canonical).toBeDefined();
+    expect(Object.keys(provider.canonical!).length).toBeGreaterThan(0);
+    expect(provider.canonical!['gpt-4o']).toBe('gpt-4o');
+    expect(provider.canonical!['gpt-4o-mini']).toBe('gpt-4o-mini');
+  });
+
+  it('does not set canonical when no services are configured', () => {
+    const provider = plugin.createProvider({
+      OPENAI_API_KEY: 'sk-test-key',
+    });
+    expect(provider.canonical).toBeUndefined();
+  });
+
   it('rewrites announced service names via ANTSEED_SERVICE_ALIAS_MAP_JSON', async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn().mockResolvedValue(

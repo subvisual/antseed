@@ -37,4 +37,19 @@ describe('provider-claude-code plugin', () => {
     expect(provider.pricing.defaults.inputUsdPerMillion).toBe(5);
     expect(provider.pricing.defaults.outputUsdPerMillion).toBe(15);
   });
+
+  it('emits non-empty canonical map when services are configured', () => {
+    const provider = plugin.createProvider({
+      ANTSEED_ALLOWED_SERVICES: 'claude-opus-4-5,claude-sonnet-4-5',
+    });
+    expect(provider.canonical).toBeDefined();
+    expect(Object.keys(provider.canonical!).length).toBeGreaterThan(0);
+    expect(provider.canonical!['claude-opus-4-5']).toBe('claude-opus-4-5');
+    expect(provider.canonical!['claude-sonnet-4-5']).toBe('claude-sonnet-4-5');
+  });
+
+  it('does not set canonical when no services are configured', () => {
+    const provider = plugin.createProvider({});
+    expect(provider.canonical).toBeUndefined();
+  });
 });

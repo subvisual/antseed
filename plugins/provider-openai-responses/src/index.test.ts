@@ -822,6 +822,41 @@ describe('provider-openai-responses plugin', () => {
     rmSync(dirname(authFile), { recursive: true, force: true });
   });
 
+  it('emits non-empty canonical map when services are configured', () => {
+    const authFile = writeAuthFile({
+      tokens: {
+        access_token: makeJwt({
+          'https://api.openai.com/auth': {
+            chatgpt_account_id: 'acct-jwt',
+          },
+        }),
+      },
+    });
+    const provider = plugin.createProvider({
+      OPENAI_RESPONSES_AUTH_FILE: authFile,
+      ANTSEED_ALLOWED_SERVICES: 'gpt-5-codex,o4-mini',
+    });
+    expect(provider.canonical).toBeDefined();
+    expect(Object.keys(provider.canonical!).length).toBeGreaterThan(0);
+    expect(provider.canonical!['gpt-5-codex']).toBe('gpt-5-codex');
+    expect(provider.canonical!['o4-mini']).toBe('o4-mini');
+    rmSync(dirname(authFile), { recursive: true, force: true });
+  });
+
+  it('does not set canonical when no services are configured', () => {
+    const authFile = writeAuthFile({
+      tokens: {
+        access_token: makeJwt({}),
+        account_id: 'acct-file',
+      },
+    });
+    const provider = plugin.createProvider({
+      OPENAI_RESPONSES_AUTH_FILE: authFile,
+    });
+    expect(provider.canonical).toBeUndefined();
+    rmSync(dirname(authFile), { recursive: true, force: true });
+  });
+
   it('returns a 502 after upstream timeout retries are exhausted', async () => {
     const authFile = writeAuthFile({
       tokens: {

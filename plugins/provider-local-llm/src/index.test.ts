@@ -42,4 +42,19 @@ describe('provider-local-llm plugin', () => {
     });
     expect(provider.maxConcurrency).toBe(4);
   });
+
+  it('emits non-empty canonical map when services are configured', () => {
+    const provider = plugin.createProvider({
+      ANTSEED_ALLOWED_SERVICES: 'llama3.1,mistral-7b',
+    });
+    expect(provider.canonical).toBeDefined();
+    expect(Object.keys(provider.canonical!).length).toBeGreaterThan(0);
+    expect(provider.canonical!['llama3.1']).toBe('llama3.1');
+    expect(provider.canonical!['mistral-7b']).toBe('mistral-7b');
+  });
+
+  it('does not set canonical when no services are configured', () => {
+    const provider = plugin.createProvider({});
+    expect(provider.canonical).toBeUndefined();
+  });
 });

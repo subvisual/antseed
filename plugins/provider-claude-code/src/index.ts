@@ -1,22 +1,6 @@
-import type { AntseedProviderPlugin, Provider, ServiceApiProtocol } from '@antseed/node';
-import { BaseProvider } from '@antseed/provider-core';
+import type { AntseedProviderPlugin, Provider } from '@antseed/node';
+import { BaseProvider, buildCanonicalMap, buildServiceApiProtocols, parseNonNegativeNumber } from '@antseed/provider-core';
 import { ClaudeCodeTokenProvider } from './claude-code-token.js';
-
-function parseNonNegativeNumber(raw: string | undefined, key: string, fallback: number): number {
-  const parsed = raw === undefined ? fallback : Number.parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`${key} must be a non-negative number`);
-  }
-  return parsed;
-}
-
-function buildServiceApiProtocols(
-  services: string[],
-  protocol: ServiceApiProtocol,
-): Record<string, ServiceApiProtocol[]> | undefined {
-  if (services.length === 0) return undefined;
-  return Object.fromEntries(services.map((service) => [service, [protocol]]));
-}
 
 const plugin: AntseedProviderPlugin = {
   name: 'claude-code',
@@ -52,12 +36,14 @@ const plugin: AntseedProviderPlugin = {
 
     const tokenProvider = new ClaudeCodeTokenProvider();
     const serviceApiProtocols = buildServiceApiProtocols(allowedServices, 'anthropic-messages');
+    const canonical = buildCanonicalMap(allowedServices);
 
     return new BaseProvider({
       name: 'claude-code',
       services: allowedServices,
       pricing,
       ...(serviceApiProtocols ? { serviceApiProtocols } : {}),
+      ...(canonical ? { canonical } : {}),
       relay: {
         baseUrl: 'https://api.anthropic.com',
         authHeaderName: 'authorization',
