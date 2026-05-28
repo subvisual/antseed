@@ -1,0 +1,355 @@
+/* ─────────────────────────────────────────────────────────────────
+   RewardsView — view-specific styles only.
+   Palette tokens, spacing, radii, and chart tokens come from
+   global.scss (:root). Do NOT duplicate token definitions here.
+   ───────────────────────────────────────────────────────────────── */
+
+.rewards-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Hero: claimable total + Claim all ── */
+.rewards-hero {
+  padding: var(--sp-5) 0 var(--sp-3);
+}
+
+.rewards-hero-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-top: var(--sp-2);
+}
+
+.rewards-hero-val {
+  font-size: 2.125rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+
+  small {
+    font-size: 0.9375rem;
+    color: var(--muted);
+    font-weight: 600;
+    margin-left: 0.25rem;
+  }
+}
+
+/* Claim all: green-accented, auto-width (not full-width) */
+.rewards-hero .btn.primary {
+  width: auto;
+  flex-shrink: 0;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.625rem 1.125rem;
+  font-size: 0.78125rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 0.12s;
+
+  &:hover:not(:disabled) { filter: brightness(1.06); }
+  &:active:not(:disabled) { filter: brightness(0.96); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+
+.rewards-hero-brk {
+  margin-top: var(--sp-2);
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.rewards-claim-success {
+  margin-top: var(--sp-3);
+}
+
+/* ── Section-head meta text ── */
+.rewards-sechead-meta {
+  font-size: 0.6875rem;
+  color: var(--muted);
+
+  strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+}
+
+/* ── Epoch growth chart ── */
+.rewards-chart-wrap {
+  margin-bottom: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+.rewards-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5625rem;
+  height: 7.5rem;   /* 120px via rem */
+}
+
+.rewards-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  height: 100%;
+}
+
+.rewards-chart-bar-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  width: 100%;
+}
+
+.rewards-chart-bar {
+  width: 100%;
+  background: var(--chart-bar);
+  border-radius: 0.3125rem 0.3125rem 0 0;
+  transition: background 0.12s;
+
+  /* Peak bar (most recent completed epoch) */
+  &--peak {
+    background: var(--accent);
+  }
+
+  /* Current in-progress bar: hatched pattern using chart tokens */
+  &--current {
+    background: repeating-linear-gradient(
+      45deg,
+      var(--chart-bar-peak),
+      var(--chart-bar-peak) 0.25rem,
+      color-mix(in srgb, var(--chart-bar-peak) 60%, var(--cream-field)) 0.25rem,
+      color-mix(in srgb, var(--chart-bar-peak) 60%, var(--cream-field)) 0.5rem
+    );
+  }
+}
+
+.rewards-chart-col:hover .rewards-chart-bar:not(.rewards-chart-bar--current):not(.rewards-chart-bar--peak) {
+  background: var(--chart-bar-peak);
+}
+
+/* Tooltip */
+.rewards-chart-tip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--chart-tip-bg);
+  color: var(--chart-tip-fg);
+  font-size: 0.625rem;
+  line-height: 1.5;
+  padding: 0.4375rem 0.5625rem;
+  border-radius: 0.4375rem;
+  white-space: nowrap;
+  margin-bottom: 0.4375rem;
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.rewards-chart-tip-epoch {
+  color: var(--chart-tip-fg);
+  font-weight: 600;
+}
+
+.rewards-chart-tip-val {
+  &.acc { color: var(--chart-tip-accent); }
+}
+
+.rewards-chart-tip-note {
+  color: var(--muted);
+  font-size: 0.5625rem;
+}
+
+.rewards-chart-ep {
+  font-size: 0.59375rem;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+/* ── Current-epoch summary row ── */
+.rewards-epline {
+  display: flex;
+  gap: 1.875rem;
+  font-size: 0.75rem;
+  color: var(--sub);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  margin-bottom: var(--sp-4);
+
+  b { color: var(--ink); }
+}
+
+.rewards-epline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  .page-label {
+    margin-bottom: 0.125rem;
+  }
+}
+
+.rewards-epline-note {
+  color: var(--muted);
+}
+
+/* ── Epoch history list ── */
+.rewards-history {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--sp-4);
+}
+
+.rewards-history-epoch {
+  width: 5.625rem;
+  flex-shrink: 0;
+}
+
+.rewards-history-amt {
+  flex: 1;
+}
+
+/* ── DIEM connect prompt ── */
+.rewards-diem-connect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.rewards-diem-connect-desc {
+  font-size: 0.75rem;
+  color: var(--sub);
+  line-height: 1.5;
+}
+
+/* ── Empty state ── */
+.rewards-empty {
+  margin-top: var(--sp-6);
+  padding: var(--sp-6);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.rewards-empty-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--sp-2);
+}
+
+.rewards-empty-desc {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Claim confirm sheet (modal overlay) ── */
+.rewards-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 26, 20, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.rewards-sheet {
+  background: var(--page-bg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  padding: var(--sp-6);
+  width: 21.25rem;       /* ~340px */
+  box-shadow: 0 1.5rem 4.375rem rgba(0, 0, 0, 0.3);
+}
+
+.rewards-sheet-icon {
+  width: 2.625rem;
+  height: 2.625rem;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  margin-bottom: var(--sp-3);
+}
+
+.rewards-sheet-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+  color: var(--ink);
+}
+
+.rewards-sheet-desc {
+  font-size: 0.78125rem;
+  color: var(--sub);
+  line-height: 1.5;
+  margin-bottom: var(--sp-4);
+}
+
+.rewards-sheet-error {
+  margin-bottom: var(--sp-3);
+}
+
+.rewards-sheet-actions {
+  display: flex;
+  gap: 0.625rem;
+
+  .btn {
+    flex: 1;
+
+    &.primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 0.625rem 1.125rem;
+      font-size: 0.78125rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: filter 0.12s;
+
+      &:hover:not(:disabled) { filter: brightness(1.06); }
+      &:disabled { opacity: 0.4; cursor: not-allowed; }
+    }
+
+    &.ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-md);
+      padding: 0.625rem 1.125rem;
+      font-size: 0.78125rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.12s;
+
+      &:hover:not(:disabled) { background: var(--card-hover); }
+      &:disabled { opacity: 0.4; cursor: not-allowed; }
+    }
+  }
+}

@@ -14,9 +14,7 @@ import { RewardsView } from './views/RewardsView';
 import { ActivityView } from './views/ActivityView';
 import { SettingsView } from './views/SettingsView';
 import { ChannelsStubView } from './views/ChannelsStubView';
-// Legacy views kept for direct URL access
-import { EmissionsView } from './views/EmissionsView';
-import { DiemRewardsView } from './views/DiemRewardsView';
+// EmissionsView and DiemRewardsView removed — merged into RewardsView
 import { AuthorizedWalletProvider } from './context/AuthorizedWalletContext';
 import { AuthorizeWalletAlert } from './layout/AuthorizeWalletAlert';
 import { useAuthorizedWallet } from './context/AuthorizedWalletContext';
@@ -280,9 +278,8 @@ function AppShell({
                 onBack={() => onSelectTab('overview')}
               />
             )}
-            {/* Legacy views kept for backwards compat / direct URL access */}
-            {activeTab === 'emissions'     && <EmissionsView   config={config} />}
-            {activeTab === 'diem-rewards'  && <DiemRewardsView config={config} />}
+            {/* Legacy tabs redirect to rewards */}
+            {(activeTab === 'emissions' || activeTab === 'diem-rewards') && <RewardsView config={config} />}
           </main>
         </div>
         <WalletDrawer
