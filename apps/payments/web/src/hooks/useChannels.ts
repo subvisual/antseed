@@ -79,6 +79,7 @@ export function useChannels(config: PaymentConfig | null): {
       return {
         channelId: raw.channelId,
         seller: raw.seller,
+        peerId: raw.peerId,
         deposit: formatUnits(deposit, 6),
         settled: formatUnits(settled, 6),
         reservedAt: raw.reservedAt,

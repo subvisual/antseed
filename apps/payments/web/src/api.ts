@@ -58,6 +58,8 @@ export interface RawChannel {
 export interface ChannelData {
   channelId: string;
   seller: string;
+  /** Peer identifier from the local channel store (used as display name / model label). */
+  peerId: string;
   deposit: string;
   settled: string;
   reservedAt: number;
