@@ -162,6 +162,33 @@ export async function getBuyerUsage(): Promise<BuyerUsageTotals> {
   return fetchJson('/api/buyer-usage');
 }
 
+// ── Activity ────────────────────────────────────────────────────────────────
+
+export type ActivityItemType =
+  | 'settlement'
+  | 'channel_close'
+  | 'deposit'
+  | 'withdrawal'
+  | 'claim';
+
+export interface ActivityItem {
+  id: string;
+  type: ActivityItemType;
+  label: string;
+  meta: string;
+  amount: string;
+  positive: boolean;
+  ts: number;
+}
+
+export interface ActivityResponse {
+  items: ActivityItem[];
+}
+
+export async function getActivity(): Promise<ActivityResponse> {
+  return fetchJson('/api/activity');
+}
+
 export interface NetworkStatsTotals {
   activePeers: number;
   totalRequests: string;        // bigint as string

@@ -1,50 +1,35 @@
 /**
- * useActivity — derives recent activity entries from raw channels.
- * Activity is a derived view over useRawChannels; no dedicated API endpoint yet.
+ * useActivity — fetches the full activity list from /api/activity.
+ *
+ * The server aggregates settlements and channel-close events from the local
+ * channel store.  The hook re-exports a typed ActivityItem that the views
+ * can consume directly.
  */
-import { useMemo } from 'react';
-import { useRawChannels } from './useRawChannels';
-import type { RawChannel } from '../api';
+import { useQuery } from '@tanstack/react-query';
+import { getActivity } from '../api';
+import type { ActivityItem } from '../api';
 
-export interface ActivityItem {
-  label: string;
-  amount: string;
-  positive: boolean;
-  ts: number;
-}
+export type { ActivityItem };
 
-function buildActivity(channels: RawChannel[]): ActivityItem[] {
-  const items: ActivityItem[] = [];
-
-  for (const ch of channels) {
-    const settled = parseFloat(ch.cumulativeSigned) / 1e6;
-    if (
-      (ch.status === 'settled' || ch.status === 'closed') &&
-      settled > 0
-    ) {
-      const model = ch.peerId ? ch.peerId.slice(0, 16) : `${ch.seller.slice(0, 8)}…`;
-      items.push({
-        label: `Settled · ${model}`,
-        amount: `-$${settled.toFixed(2)}`,
-        positive: false,
-        ts: ch.reservedAt,
-      });
-    }
-  }
-
-  items.sort((a, b) => b.ts - a.ts);
-  return items;
-}
+export const ACTIVITY_KEY = ['activity'] as const;
 
 export function useActivity() {
-  const { data, isLoading, isError, error } = useRawChannels();
+  const { data, isLoading, isError, error, isRefetching } = useQuery({
+    queryKey: ACTIVITY_KEY,
+    queryFn: getActivity,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    retry: 2,
+    placeholderData: (prev) => prev,
+  });
 
-  const activity = useMemo(
-    () => buildActivity(data?.channels ?? []),
-    [data],
-  );
-
-  return { activity, isLoading, isError, error };
+  return {
+    activity: data?.items ?? [],
+    isLoading,
+    isError,
+    isRefetching,
+    error,
+  };
 }
 
 export function useRecentActivity(limit = 4) {

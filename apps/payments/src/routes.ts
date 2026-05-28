@@ -158,6 +158,120 @@ export function registerRoutes(fastify: FastifyInstance, ctx: RouteContext): voi
     return { transactions: [] };
   });
 
+  /**
+   * GET /api/activity
+   *
+   * Aggregates all buyer activity from the local channel store:
+   * - Settlements (status === 'settled' | 'closed', cumulativeSigned > 0)
+   * - Channel closes where reserved funds were reclaimed (closed with low signed)
+   *
+   * Returns items sorted newest-first; type-filter is applied client-side.
+   * Deposits and withdrawals are on-chain events not yet indexed — they are
+   * placeholder-typed here for future enrichment.
+   */
+  fastify.get('/api/activity', async (_request, reply) => {
+    if (!ctx.cryptoCtx) {
+      return { items: [] };
+    }
+
+    try {
+      const url = `http://127.0.0.1:${ctx.proxyPort}/_antseed/channels?all=1`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        fastify.log.warn(`[/api/activity] buyer proxy returned ${resp.status}`);
+        return { items: [] };
+      }
+
+      const body = await resp.json() as {
+        ok: boolean;
+        channels: Array<{
+          channelId: string;
+          peerId?: string;
+          seller: string;
+          buyer?: string;
+          reserveMax: string;
+          cumulativeSigned: string;
+          deadline?: number;
+          reservedAt: number;
+          status: string;
+          requestCount?: number;
+        }>;
+      };
+
+      const channels = body.channels ?? [];
+
+      interface ActivityItem {
+        id: string;
+        type: 'settlement' | 'channel_close' | 'deposit' | 'withdrawal' | 'claim';
+        /** Human-readable label, e.g. "Settled · gpt-4o" */
+        label: string;
+        /** Secondary line, e.g. "seller 0x7c…91" */
+        meta: string;
+        /** Signed dollar amount as a string, e.g. "-2.14" */
+        amount: string;
+        /** Whether the amount is positive (in-flow) */
+        positive: boolean;
+        /** Unix timestamp (seconds) */
+        ts: number;
+      }
+
+      const items: ActivityItem[] = [];
+
+      for (const ch of channels) {
+        const signed = parseFloat(ch.cumulativeSigned) / 1e6;
+        const reserved = parseFloat(ch.reserveMax) / 1e6;
+
+        const modelLabel = ch.peerId
+          ? ch.peerId.slice(0, 20)
+          : `${ch.seller.slice(0, 6)}…${ch.seller.slice(-4)}`;
+        const sellerShort = `${ch.seller.slice(0, 6)}…${ch.seller.slice(-4)}`;
+
+        if (ch.status === 'settled' && signed > 0) {
+          items.push({
+            id: `settlement-${ch.channelId}`,
+            type: 'settlement',
+            label: `Settled · ${modelLabel}`,
+            meta: `seller ${sellerShort}`,
+            amount: `-${signed.toFixed(2)}`,
+            positive: false,
+            ts: ch.reservedAt,
+          });
+        } else if (ch.status === 'closed') {
+          if (signed > 0) {
+            items.push({
+              id: `settlement-${ch.channelId}`,
+              type: 'settlement',
+              label: `Settled · ${modelLabel}`,
+              meta: `seller ${sellerShort}`,
+              amount: `-${signed.toFixed(2)}`,
+              positive: false,
+              ts: ch.reservedAt,
+            });
+          }
+          const reclaimed = reserved - signed;
+          if (reclaimed > 0.001) {
+            items.push({
+              id: `close-${ch.channelId}`,
+              type: 'channel_close',
+              label: `Channel closed · ${modelLabel}`,
+              meta: 'reclaimed to available',
+              amount: `+${reclaimed.toFixed(2)}`,
+              positive: true,
+              ts: ch.reservedAt,
+            });
+          }
+        }
+      }
+
+      items.sort((a, b) => b.ts - a.ts);
+
+      return { items };
+    } catch (err) {
+      fastify.log.warn(`[/api/activity] error: ${err instanceof Error ? err.message : String(err)}`);
+      return reply.status(500).send({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   // Withdrawals are now submitted directly from the connected wallet
   // (see apps/payments/web/src/hooks/useWithdraw.ts). The contract requires
   // msg.sender == operator and sends funds to msg.sender, so the server-side
