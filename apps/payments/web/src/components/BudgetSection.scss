@@ -1,0 +1,176 @@
+/* ─────────────────────────────────────────────────────────────────
+   BudgetSection — scoped styles for the Budget card in Settings.
+   Token-only: no raw hex or pixel values (1px/2px/999px idioms ok).
+   ───────────────────────────────────────────────────────────────── */
+
+/* ── Meter control column ── */
+.budget-meter-ctrl {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  justify-self: stretch;
+}
+
+/* ── Meter label row ── */
+.budget-meter__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  font-size: 0.8125rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.budget-meter__spent {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.budget-meter__spent--warning {
+  font-weight: 600;
+  color: var(--amber);
+}
+
+.budget-meter__spent--critical {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.budget-meter__of {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+/* ── Progress bar ── */
+.budget-meter__track {
+  width: 100%;
+  height: 0.375rem;
+  background: var(--border-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.budget-meter__bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-dark);
+  transition: width 0.3s ease;
+}
+
+.budget-meter__bar--warning {
+  background: var(--amber);
+}
+
+.budget-meter__bar--critical {
+  background: var(--danger);
+}
+
+/* ── Warning / at-cap badge ── */
+.budget-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.budget-badge--warn {
+  background: var(--amber-dim);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+}
+
+.budget-badge--critical {
+  background: var(--danger-dim);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+}
+
+/* ── Cap / threshold input row ── */
+.budget-cap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.budget-cap-prefix {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.budget-cap-input {
+  width: 6rem;
+  font-family: var(--font-mono);
+  text-align: right;
+  /* Hide number spinner arrows for cleaner look */
+  -moz-appearance: textfield;
+
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ── "No cap set" placeholder ── */
+.budget-unset {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ── Loading placeholder ── */
+.budget-loading {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/* ── Low-balance alert banner ── */
+.budget-threshold-ctrl {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  justify-self: stretch;
+}
+
+.budget-low-balance-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-sm);
+  width: 100%;
+}
+
+.budget-low-balance-msg {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--amber);
+  font-weight: 500;
+}
+
+.budget-topup-btn {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/* ── Credit limit value ── */
+.budget-credit-limit {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Enforcement note within description ── */
+.budget-note {
+  color: var(--text-faint);
+  font-style: italic;
+}

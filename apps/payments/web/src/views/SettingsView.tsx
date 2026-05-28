@@ -1,13 +1,14 @@
 /**
- * Settings view — Wallet · Network · Appearance
+ * Settings view — Budget · Wallet · Network · Appearance
  *
  * Sections:
- *   [Budget placeholder — issue 9 will insert Budget here]
+ *   Budget  — monthly spend cap meter, low-balance nudge, credit-limit context
  *   Wallet  — authorized wallet + status, transfer-authorization
  *   Network — chain + health pill + RPC override
  *   Appearance — dark theme toggle
  *
  * Wires to:
+ *   - BudgetSection for budget/spend-control (issue 9)
  *   - AuthorizedWalletContext for wallet/operator state and authorize flow
  *   - AuthorizeWalletModal (via requireAuthorization)
  *   - useTransferOperator for the transfer-auth flow
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useId, useState } from 'react';
 import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
 import { useTransferOperator } from '../hooks/useSetOperator';
 import { ActionModal } from '../layout/ActionModal';
+import { BudgetSection } from '../components/BudgetSection';
 import type { PaymentConfig } from '../types';
 import './SettingsView.scss';
 
@@ -170,9 +172,10 @@ function TransferAuthModal({
 
 interface SettingsViewProps {
   config: PaymentConfig | null;
+  onOpenDeposit: () => void;
 }
 
-export function SettingsView({ config }: SettingsViewProps) {
+export function SettingsView({ config, onOpenDeposit }: SettingsViewProps) {
   const { operator, operatorSet, requireAuthorization, refetch } = useAuthorizedWallet();
   const [isDark, setIsDark] = useState<boolean>(readTheme);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -237,8 +240,8 @@ export function SettingsView({ config }: SettingsViewProps) {
         <div className="page-subtitle">Wallet, network, and appearance</div>
       </div>
 
-      {/* ── Budget placeholder — issue 9 will insert the Budget section here ── */}
-      <div className="settings-budget-slot" aria-hidden="true" />
+      {/* ── Budget — monthly spend cap, low-balance nudge, credit-limit context ── */}
+      <BudgetSection onOpenDeposit={onOpenDeposit} />
 
       {/* ── Wallet ─────────────────────────────────────────────────── */}
       <div className="settings-section-label">Wallet</div>

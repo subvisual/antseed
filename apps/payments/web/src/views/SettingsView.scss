@@ -14,10 +14,8 @@
   margin-bottom: var(--sp-7);
 }
 
-/* ── Budget placeholder slot (issue 9 will fill this) ── */
-.settings-budget-slot {
-  /* Intentionally empty — issue 9 inserts Budget section here. */
-}
+/* ── Budget slot (filled by BudgetSection component) ── */
+/* .settings-budget-slot is no longer rendered; BudgetSection renders directly. */
 
 /* ── Section label ── */
 .settings-section-label {

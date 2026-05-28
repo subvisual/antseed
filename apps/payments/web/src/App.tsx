@@ -270,7 +270,7 @@ function AppShell({
             )}
             {activeTab === 'rewards'  && <RewardsView  config={config} />}
             {activeTab === 'activity' && <ActivityView config={config} />}
-            {activeTab === 'settings' && <SettingsView config={config} />}
+            {activeTab === 'settings' && <SettingsView config={config} onOpenDeposit={onOpenDeposit} />}
             {/* Channels: reachable via Overview "details" link or direct URL */}
             {activeTab === 'channels' && (
               <ChannelsStubView
