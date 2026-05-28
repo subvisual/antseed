@@ -20,11 +20,13 @@ interface ActivityViewProps {
 
 type FilterId = 'all' | ActivityItemType;
 
+/**
+ * Only filters backed by a live data source are shown.
+ * Deposits / Withdrawals / Claims are hidden until on-chain event indexing
+ * lands — re-add them here when the backend exposes those events.
+ */
 const FILTERS: { id: FilterId; label: string }[] = [
   { id: 'all',           label: 'All' },
-  { id: 'deposit',       label: 'Deposits' },
-  { id: 'withdrawal',    label: 'Withdrawals' },
-  { id: 'claim',         label: 'Claims' },
   { id: 'settlement',    label: 'Settlements' },
   { id: 'channel_close', label: 'Channel closes' },
 ];
@@ -116,7 +118,7 @@ export function ActivityView({ config: _config }: ActivityViewProps) {
     <div className="activity-view">
       {/* Page header */}
       <div className="page-h1">Activity</div>
-      <div className="page-subtitle">Every deposit, withdrawal, claim, and settlement</div>
+      <div className="page-subtitle">Settlements and channel closes</div>
 
       {/* Stale data notice */}
       <StaleDataBanner
