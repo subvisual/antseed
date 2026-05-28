@@ -3,6 +3,26 @@
   flex-direction: column;
 }
 
+/* Subtle top progress bar shown during background refetches */
+.overview-refreshing {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: overview-refresh-slide 1.4s ease-in-out infinite;
+  border-radius: 999px;
+  margin-bottom: var(--sp-3);
+}
+
+@keyframes overview-refresh-slide {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
 /* error state (shared) */
 .overview-stats-error {
   margin-top: 0.25rem;

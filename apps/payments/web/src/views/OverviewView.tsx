@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
-import type { BalanceData, PaymentConfig } from '../types';
-import {
-  getBuyerUsage,
-  getChannels,
-  type BuyerUsageChannelPoint,
-  type BuyerUsageTotals,
-  type RawChannel,
-} from '../api';
+import type { PaymentConfig } from '../types';
+import { useOptimisticBalance } from '../hooks/useOptimisticBalance';
+import { useUsage } from '../hooks/useUsage';
+import { useRecentActivity } from '../hooks/useActivity';
+import { useRawChannels } from '../hooks/useRawChannels';
 import { UsageChart } from '../components/UsageChart';
+import {
+  SkeletonHero,
+  SkeletonStatRow,
+  SkeletonList,
+  SkeletonChart,
+} from '../components/Skeleton';
+import { StaleDataBanner } from '../components/StaleDataBanner';
 import { formatCompact, formatNumber, bigintFromString } from '../utils/format';
 import './OverviewView.scss';
 
 interface OverviewViewProps {
-  balance: BalanceData | null;
+  // balance + config are still accepted as props for compatibility with the
+  // existing AppShell — the view also reads from react-query, which is the
+  // authoritative source for cached/optimistic data.
+  balance: import('../types').BalanceData | null;
   config: PaymentConfig | null;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
@@ -28,70 +34,52 @@ function formatUsd(s: string | null | undefined): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const EMPTY_CHANNELS: BuyerUsageChannelPoint[] = [];
-
-/**
- * Derive a short list of "recent activity" entries from the raw channel list.
- * Channels with status "settled" / "closed" contribute as settled items.
- * We don't have a proper activity log here, so we show what we can.
- */
-function buildRecentActivity(
-  channels: RawChannel[],
-): Array<{ label: string; amount: string; positive: boolean }> {
-  const items: Array<{ label: string; amount: string; positive: boolean; ts: number }> = [];
-
-  for (const ch of channels) {
-    const settled = parseFloat(ch.cumulativeSigned) / 1e6;
-    if (
-      (ch.status === 'settled' || ch.status === 'closed') &&
-      settled > 0
-    ) {
-      const model = ch.peerId ? ch.peerId.slice(0, 16) : ch.seller.slice(0, 8) + '…';
-      items.push({
-        label: `Settled · ${model}`,
-        amount: `-$${settled.toFixed(2)}`,
-        positive: false,
-        ts: ch.reservedAt,
-      });
-    }
-  }
-
-  // Sort by most recent first, cap at 4 items
-  items.sort((a, b) => b.ts - a.ts);
-  return items.slice(0, 4);
-}
-
 export function OverviewView({
-  balance,
   config: _config,
   onOpenDeposit,
   onOpenWithdraw,
   onGoToChannels,
   onGoToActivity,
 }: OverviewViewProps) {
-  const [buyerUsage, setBuyerUsage] = useState<BuyerUsageTotals | null>(null);
-  const [rawChannels, setRawChannels] = useState<RawChannel[]>([]);
+  // ── Data hooks ───────────────────────────────────────────────────────────
+  const {
+    balance,
+    isLoading: balanceLoading,
+    isRefetching: balanceRefetching,
+    error: balanceError,
+  } = useOptimisticBalance();
 
-  useEffect(() => {
-    let cancelled = false;
-    getBuyerUsage()
-      .then((totals) => { if (!cancelled) setBuyerUsage(totals); })
-      .catch(() => {});
-    getChannels()
-      .then(({ channels }) => { if (!cancelled) setRawChannels(channels); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  const {
+    data: buyerUsage,
+    isLoading: usageLoading,
+    error: usageError,
+  } = useUsage();
 
-  const available  = balance?.available  ?? null;
-  const reserved   = balance?.reserved   ?? null;
-  const total      = balance?.total      ?? null;
+  const {
+    data: channelsData,
+    isLoading: channelsLoading,
+    error: channelsError,
+  } = useRawChannels();
 
+  const {
+    activity: recentActivity,
+    isLoading: activityLoading,
+    error: activityError,
+  } = useRecentActivity(4);
+
+  const rawChannels = channelsData?.channels ?? [];
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const available = balance?.available ?? null;
+  const reserved  = balance?.reserved  ?? null;
+  const total     = balance?.total     ?? null;
+
+  const totalUsd     = total     ? parseFloat(total)     : null;
   const availableUsd = available ? parseFloat(available) : null;
   const reservedUsd  = reserved  ? parseFloat(reserved)  : null;
-  const totalUsd     = total     ? parseFloat(total)      : null;
 
-  const activeChannels = buyerUsage?.activeChannels ?? rawChannels.filter((c) => c.status === 'open').length;
+  const activeChannels =
+    buyerUsage?.activeChannels ?? rawChannels.filter((c) => c.status === 'open').length;
 
   const totalRequests = buyerUsage?.totalRequests ?? 0;
   const totalTokens =
@@ -99,7 +87,10 @@ export function OverviewView({
     bigintFromString(buyerUsage?.totalOutputTokens);
   const uniqueSellers = buyerUsage?.uniqueSellers ?? 0;
 
-  const recentActivity = buildRecentActivity(rawChannels);
+  // ── Graceful degrade: any fetch error with stale data ────────────────────
+  const anyError = balanceError ?? usageError ?? channelsError ?? activityError;
+  const hasCachedBalance = balance !== null;
+  const isRefreshing = balanceRefetching;
 
   return (
     <div className="overview-view">
@@ -107,45 +98,66 @@ export function OverviewView({
       <div className="page-h1">Overview</div>
       <div className="page-subtitle">Your AntSeed account at a glance</div>
 
-      {/* Balance hero — asymmetric: balance left, rewards right */}
+      {/* Stale data notice */}
+      <StaleDataBanner
+        hasError={anyError != null && !balanceLoading}
+        hasCachedData={hasCachedBalance}
+      />
+
+      {/* Background refresh indicator (subtle) */}
+      {isRefreshing && (
+        <div
+          className="overview-refreshing"
+          role="status"
+          aria-label="Refreshing balance…"
+        />
+      )}
+
+      {/* Balance hero */}
       <div className="overview-top">
         <div className="overview-bal-col">
-          <div className="page-label">Available balance</div>
-          <div className="overview-bal">
-            {totalUsd !== null ? (
-              <>
-                ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                <small>USDC</small>
-              </>
-            ) : (
-              <span style={{ color: 'var(--faint)' }}>—</span>
-            )}
-          </div>
-          <div className="overview-bal-note">
-            {availableUsd !== null && reservedUsd !== null ? (
-              <>
-                ${formatUsd(available)} available · ${formatUsd(reserved)} in{' '}
-                {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
-                ·{' '}
-              </>
-            ) : null}
-            <button type="button" className="portal-link" onClick={onGoToChannels}>
-              details
-            </button>
-          </div>
-          <div className="overview-actions">
-            <button type="button" className="btn primary" onClick={onOpenDeposit}>
-              + Add funds
-            </button>
-            <button type="button" className="btn ghost" onClick={onOpenWithdraw}>
-              Withdraw
-            </button>
-          </div>
+          {balanceLoading && !hasCachedBalance ? (
+            <SkeletonHero />
+          ) : (
+            <>
+              <div className="page-label">Available balance</div>
+              <div className="overview-bal">
+                {totalUsd !== null ? (
+                  <>
+                    ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    <small>USDC</small>
+                  </>
+                ) : (
+                  <span style={{ color: 'var(--faint)' }}>—</span>
+                )}
+              </div>
+              <div className="overview-bal-note">
+                {availableUsd !== null && reservedUsd !== null ? (
+                  <>
+                    ${formatUsd(available)} available · ${formatUsd(reserved)} in{' '}
+                    {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
+                    ·{' '}
+                  </>
+                ) : null}
+                <button type="button" className="portal-link" onClick={onGoToChannels}>
+                  details
+                </button>
+              </div>
+              <div className="overview-actions">
+                <button type="button" className="btn primary" onClick={onOpenDeposit}>
+                  + Add funds
+                </button>
+                <button type="button" className="btn ghost" onClick={onOpenWithdraw}>
+                  Withdraw
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="overview-vrule" aria-hidden="true" />
 
-        {/* Rewards column — data comes from emissions/DIEM; show a placeholder until wired */}
+        {/* Rewards column */}
         <div className="overview-rew-col">
           <div className="page-label">Claimable rewards</div>
           <div className="overview-rew-val">
@@ -165,24 +177,28 @@ export function OverviewView({
       <div className="page-rule" />
 
       {/* All-time stat row */}
-      <div className="portal-stats">
-        <div className="portal-stat">
-          <div className="page-label">Requests (all-time)</div>
-          <div className="portal-stat-num">{formatNumber(totalRequests)}</div>
+      {(usageLoading || channelsLoading) && !buyerUsage ? (
+        <SkeletonStatRow count={4} />
+      ) : (
+        <div className="portal-stats">
+          <div className="portal-stat">
+            <div className="page-label">Requests (all-time)</div>
+            <div className="portal-stat-num">{formatNumber(totalRequests)}</div>
+          </div>
+          <div className="portal-stat">
+            <div className="page-label">Tokens (all-time)</div>
+            <div className="portal-stat-num">{formatCompact(totalTokens)}</div>
+          </div>
+          <div className="portal-stat">
+            <div className="page-label">Sellers used</div>
+            <div className="portal-stat-num">{formatNumber(uniqueSellers)}</div>
+          </div>
+          <div className="portal-stat">
+            <div className="page-label">Active channels</div>
+            <div className="portal-stat-num">{formatNumber(activeChannels)}</div>
+          </div>
         </div>
-        <div className="portal-stat">
-          <div className="page-label">Tokens (all-time)</div>
-          <div className="portal-stat-num">{formatCompact(totalTokens)}</div>
-        </div>
-        <div className="portal-stat">
-          <div className="page-label">Sellers used</div>
-          <div className="portal-stat-num">{formatNumber(uniqueSellers)}</div>
-        </div>
-        <div className="portal-stat">
-          <div className="page-label">Active channels</div>
-          <div className="portal-stat-num">{formatNumber(activeChannels)}</div>
-        </div>
-      </div>
+      )}
 
       <div className="page-rule" />
 
@@ -192,7 +208,11 @@ export function OverviewView({
           <div className="portal-sechead">
             <div className="page-label">Usage · last 14 days</div>
           </div>
-          <UsageChart channels={buyerUsage?.channels ?? EMPTY_CHANNELS} days={14} />
+          {usageLoading && !buyerUsage ? (
+            <SkeletonChart bars={14} />
+          ) : (
+            <UsageChart channels={buyerUsage?.channels ?? []} days={14} />
+          )}
         </div>
 
         <div>
@@ -203,7 +223,9 @@ export function OverviewView({
             </button>
           </div>
 
-          {recentActivity.length > 0 ? (
+          {activityLoading && recentActivity.length === 0 ? (
+            <SkeletonList rows={4} />
+          ) : recentActivity.length > 0 ? (
             recentActivity.map((item, i) => (
               <div key={i} className="portal-list-row">
                 <span className="portal-list-who">{item.label}</span>
@@ -213,7 +235,10 @@ export function OverviewView({
               </div>
             ))
           ) : (
-            <div className="overview-empty-desc" style={{ marginTop: 'var(--sp-4)', color: 'var(--muted)' }}>
+            <div
+              className="overview-empty-desc"
+              style={{ marginTop: 'var(--sp-4)', color: 'var(--muted)' }}
+            >
               No activity yet.
             </div>
           )}
