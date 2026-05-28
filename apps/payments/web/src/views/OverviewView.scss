@@ -1,0 +1,16 @@
+.overview-view {
+  display: flex;
+  flex-direction: column;
+}
+
+/* error state (shared) */
+.overview-stats-error {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--danger);
+  background: var(--danger-dim);
+  border: 0.0625rem solid var(--danger-border);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  line-height: 1.5;
+}

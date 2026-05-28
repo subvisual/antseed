@@ -1,125 +1,125 @@
 import { useMemo } from 'react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  type TooltipProps,
-} from 'recharts';
 import type { BuyerUsageChannelPoint } from '../api';
 import { formatCompact } from '../utils/format';
 import './UsageChart.scss';
 
 interface UsageChartProps {
   channels: BuyerUsageChannelPoint[];
+  /** Number of days to show in the spark view (default 14). */
+  days?: number;
 }
 
-interface BucketPoint {
-  t: number;            // bucket start (unix ms)
-  date: string;         // short label for axis
-  fullDate: string;     // full label for tooltip
+interface DayBucket {
+  t: number;
+  dateLabel: string;
+  fullDate: string;
   requests: number;
-  tokens: number;       // input + output
+  tokens: number;
+  /** Estimated spend from tokens (rough: (tokens / 1_000_000) * 3 cents) */
+  spendUsd: number;
 }
 
 const DAY_MS = 86_400_000;
 
-function bucketByDay(channels: BuyerUsageChannelPoint[]): BucketPoint[] {
-  if (channels.length === 0) return [];
+/** Transform raw channel points into per-day buckets for the last `days` days. */
+export function bucketByDay(
+  channels: BuyerUsageChannelPoint[],
+  days = 14,
+): DayBucket[] {
+  const now = Date.now();
+  const cutoff = now - days * DAY_MS;
 
-  // Drop channels that were reserved but never saw a request. They still
-  // exist in the local DB as `ghost`/`timeout` rows but don't represent any
-  // real activity, and including them would stretch the X axis back to
-  // whenever the empty channel was opened.
+  // Only include channels that had real activity.
   const active = channels.filter((c) => c.requestCount > 0);
-  if (active.length === 0) return [];
 
-  // Timestamps are produced by Date.now() on the buyer side, so they are
-  // already in milliseconds. Bucket to UTC day start.
-  const map = new Map<number, BucketPoint>();
-  let minT = Infinity;
-  let maxT = -Infinity;
+  const map = new Map<number, DayBucket>();
 
   for (const c of active) {
     const stamp = c.updatedAt || c.reservedAt;
     if (!Number.isFinite(stamp) || stamp <= 0) continue;
     const t = Math.floor(stamp / DAY_MS) * DAY_MS;
-    if (t < minT) minT = t;
-    if (t > maxT) maxT = t;
+    // Keep only the window we're interested in
+    if (t < cutoff) continue;
+
     let tokens = 0;
     try {
       tokens = Number(BigInt(c.inputTokens || '0') + BigInt(c.outputTokens || '0'));
     } catch { /* skip */ }
+
     const existing = map.get(t);
     if (existing) {
       existing.requests += c.requestCount;
       existing.tokens += tokens;
+      existing.spendUsd += estimateSpend(tokens);
     } else {
       map.set(t, {
         t,
-        date: formatShortDate(t),
-        fullDate: formatFullDate(t),
+        dateLabel: shortDate(t),
+        fullDate: fullDate(t),
         requests: c.requestCount,
         tokens,
+        spendUsd: estimateSpend(tokens),
       });
     }
   }
 
-  if (!Number.isFinite(minT) || !Number.isFinite(maxT)) return [];
-
-  // Fill empty days between min and max so the X axis reads as continuous
-  // time instead of "days that happened to have activity".
-  const points: BucketPoint[] = [];
-  for (let t = minT; t <= maxT; t += DAY_MS) {
-    points.push(
+  // Build a contiguous array for the window, filling gaps with zeros.
+  const todayStart = Math.floor(now / DAY_MS) * DAY_MS;
+  const windowStart = todayStart - (days - 1) * DAY_MS;
+  const buckets: DayBucket[] = [];
+  for (let t = windowStart; t <= todayStart; t += DAY_MS) {
+    buckets.push(
       map.get(t) ?? {
         t,
-        date: formatShortDate(t),
-        fullDate: formatFullDate(t),
+        dateLabel: shortDate(t),
+        fullDate: fullDate(t),
         requests: 0,
         tokens: 0,
+        spendUsd: 0,
       },
     );
   }
-  return points;
+  return buckets;
 }
 
-function formatShortDate(ms: number): string {
+function estimateSpend(tokens: number): number {
+  // Rough estimate: ~$3 per million tokens average
+  return (tokens / 1_000_000) * 3;
+}
+
+function shortDate(ms: number): string {
   return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function formatFullDate(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+function fullDate(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
-function ChartTooltip({ active, payload }: TooltipProps<number, string>) {
-  if (!active || !payload || payload.length === 0) return null;
-  const p = payload[0]?.payload as BucketPoint | undefined;
-  if (!p) return null;
-  return (
-    <div className="usage-chart-tooltip">
-      <div className="usage-chart-tooltip-date">{p.fullDate}</div>
-      <div className="usage-chart-tooltip-rows">
-        <div className="usage-chart-tooltip-row">
-          <span className="usage-chart-tooltip-label">Requests</span>
-          <span className="usage-chart-tooltip-value">{p.requests.toLocaleString('en-US')}</span>
-        </div>
-        <div className="usage-chart-tooltip-row">
-          <span className="usage-chart-tooltip-label">Tokens</span>
-          <span className="usage-chart-tooltip-value">{formatCompact(p.tokens)}</span>
-        </div>
-      </div>
-    </div>
+/**
+ * 14-day hoverable bar chart.
+ * Each column shows a bar proportional to request count for that day.
+ * Hovering reveals a tooltip with requests / tokens / estimated spend.
+ */
+export function UsageChart({ channels, days = 14 }: UsageChartProps) {
+  const buckets = useMemo(() => bucketByDay(channels, days), [channels, days]);
+
+  const maxRequests = useMemo(
+    () => Math.max(1, ...buckets.map((b) => b.requests)),
+    [buckets],
   );
-}
 
-export function UsageChart({ channels }: UsageChartProps) {
-  const buckets = useMemo(() => bucketByDay(channels), [channels]);
+  const totals = useMemo(() => {
+    const requests = buckets.reduce((s, b) => s + b.requests, 0);
+    const tokens   = buckets.reduce((s, b) => s + b.tokens,   0);
+    const spendUsd = buckets.reduce((s, b) => s + b.spendUsd, 0);
+    return { requests, tokens, spendUsd };
+  }, [buckets]);
 
-  if (buckets.length === 0) {
+  if (totals.requests === 0) {
     return (
       <div className="usage-chart usage-chart--empty">
         <div className="usage-chart-empty-text">
@@ -131,50 +131,48 @@ export function UsageChart({ channels }: UsageChartProps) {
 
   return (
     <div className="usage-chart">
-      <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={buckets} margin={{ top: 12, right: 8, left: 8, bottom: 4 }}>
-          <defs>
-            <linearGradient id="usage-chart-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.42} />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            stroke="var(--card-border)"
-            strokeDasharray="2 5"
-            vertical={false}
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="date"
-            stroke="var(--text-muted)"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            minTickGap={32}
-          />
-          <YAxis
-            stroke="var(--text-muted)"
-            fontSize={11}
-            tickLine={false}
-            axisLine={false}
-            width={40}
-            tickFormatter={(v: number) => formatCompact(v)}
-          />
-          <Tooltip
-            content={<ChartTooltip />}
-            cursor={{ stroke: 'var(--accent)', strokeWidth: 1, strokeDasharray: '3 3' }}
-          />
-          <Area
-            type="monotone"
-            dataKey="requests"
-            stroke="var(--accent)"
-            strokeWidth={2}
-            fill="url(#usage-chart-fill)"
-            activeDot={{ r: 4, fill: 'var(--accent)', stroke: 'var(--page-bg)', strokeWidth: 2 }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      {/* 14-day totals bar */}
+      <div className="usage-chart-totbar">
+        <div className="usage-chart-tot">
+          Requests
+          <b>{totals.requests.toLocaleString('en-US')}</b>
+        </div>
+        <div className="usage-chart-tot">
+          Tokens
+          <b>{formatCompact(totals.tokens)}</b>
+        </div>
+        <div className="usage-chart-tot">
+          Spent
+          <b>${totals.spendUsd.toFixed(2)}</b>
+        </div>
+      </div>
+
+      {/* Hoverable spark chart */}
+      <div className="portal-spark" role="img" aria-label={`${days}-day usage chart`}>
+        {buckets.map((b) => {
+          const heightPct = b.requests === 0 ? 4 : Math.max(4, (b.requests / maxRequests) * 100);
+          return (
+            <div key={b.t} className="portal-spark-col">
+              <div
+                className="portal-spark-bar"
+                style={{ height: `${heightPct}%` }}
+              />
+              <div className="portal-spark-tip" role="tooltip">
+                <b>{b.fullDate}</b>
+                <br />
+                Requests{' '}
+                <span className="acc">{b.requests.toLocaleString('en-US')}</span>
+                <br />
+                Tokens{' '}
+                <span className="acc">{formatCompact(b.tokens)}</span>
+                <br />
+                Spent{' '}
+                <span className="acc">${b.spendUsd.toFixed(2)}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

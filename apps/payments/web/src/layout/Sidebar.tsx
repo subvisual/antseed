@@ -1,12 +1,29 @@
 import type { ReactNode } from 'react';
 
-export type TabId = 'dashboard' | 'channels' | 'emissions' | 'diem-rewards';
+// The 4 portal nav items defined by the redesign.
+// Legacy tab IDs kept for compatibility in ChannelsView / Emissions / DiemRewards
+// which are still served as sub-pages via the old routing.
+export type TabId =
+  | 'overview'
+  | 'rewards'
+  | 'activity'
+  | 'settings'
+  // legacy IDs kept so existing code that references them doesn't break
+  | 'dashboard'
+  | 'channels'
+  | 'emissions'
+  | 'diem-rewards';
 
 interface SidebarProps {
   activeTab: TabId;
   onSelect: (tab: TabId) => void;
   isDark: boolean;
   onToggleTheme: () => void;
+  /** Short-form wallet address, e.g. "0x3f9a…c2a1" */
+  walletAddress?: string | null;
+  /** Whether the wallet is authorized */
+  walletAuthorized?: boolean;
+  onOpenWallet?: () => void;
 }
 
 interface NavItem {
@@ -15,118 +32,138 @@ interface NavItem {
   icon: ReactNode;
 }
 
-function DashboardIcon() {
+/* ── SVG icons ── */
+
+function OverviewIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-      <rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="10" y="2.5" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="2.5" y="10" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="10" y="10" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M7 1L13 7L7 13L1 7L7 1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function ChannelsIcon() {
+function RewardsIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1.5" y="4.25" width="15" height="9.5" rx="1.25"/>
-      <circle cx="9" cy="9" r="2"/>
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M7 1.5L8.5 5H12.5L9.5 7.5L10.5 11.5L7 9L3.5 11.5L4.5 7.5L1.5 5H5.5L7 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function AntsTabIcon() {
-  return <AntIcon size={18} />;
+function ActivityIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M1.5 7H3.5L5 3L7 11L9 5L10.5 7H12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
-function DiemTabIcon() {
+function SettingsIcon() {
   return (
-    <img
-      src="/diem-logo.png"
-      width="18"
-      height="18"
-      alt=""
-      aria-hidden="true"
-      decoding="async"
-      className="dash-sidebar-token-icon"
-    />
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.9 2.9l1.1 1.1M10 10l1.1 1.1M2.9 11.1L4 10M10 4l1.1-1.1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }
 
 function SunIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.2"/><path d="M8 2V3.5M8 12.5V14M2 8H3.5M12.5 8H14M3.8 3.8L4.8 4.8M11.2 11.2L12.2 12.2M3.8 12.2L4.8 11.2M11.2 4.8L12.2 3.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M8 2V3.5M8 12.5V14M2 8H3.5M12.5 8H14M3.8 3.8L4.8 4.8M11.2 11.2L12.2 12.2M3.8 12.2L4.8 11.2M11.2 4.8L12.2 3.8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   );
 }
 
 function MoonIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13.5 10A5.5 5.5 0 016 2.5 5.5 5.5 0 108 13.5a5.5 5.5 0 005.5-3.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg>
-  );
-}
-
-function AntIcon({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14 9.625C14.9665 9.625 15.75 8.763 15.75 7.7C15.75 6.637 14.9665 5.775 14 5.775C13.0335 5.775 12.25 6.637 12.25 7.7C12.25 8.763 13.0335 9.625 14 9.625Z" fill="currentColor"/>
-      <path d="M14 15.4C15.353 15.4 16.45 14.146 16.45 12.6C16.45 11.054 15.353 9.8 14 9.8C12.647 9.8 11.55 11.054 11.55 12.6C11.55 14.146 12.647 15.4 14 15.4Z" fill="currentColor"/>
-      <path d="M14 23.45C15.74 23.45 17.15 21.57 17.15 19.25C17.15 16.93 15.74 15.05 14 15.05C12.26 15.05 10.85 16.93 10.85 19.25C10.85 21.57 12.26 23.45 14 23.45Z" fill="currentColor"/>
-      <path opacity="0.6" d="M12.95 5.95L9.8 2.1" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round"/>
-      <path opacity="0.6" d="M15.05 5.95L18.2 2.1" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round"/>
-      <circle cx="9.8" cy="2.1" r="0.875" fill="currentColor"/>
-      <circle cx="18.2" cy="2.1" r="0.875" fill="currentColor"/>
-      <path opacity="0.4" d="M12.25 11.2L6.125 7.7" stroke="currentColor" strokeWidth="0.52" strokeLinecap="round"/>
-      <path opacity="0.4" d="M15.75 11.2L21.875 7.7" stroke="currentColor" strokeWidth="0.52" strokeLinecap="round"/>
-      <circle cx="6.3" cy="7.7" r="0.875" fill="currentColor"/>
-      <circle cx="21.7" cy="7.7" r="0.875" fill="currentColor"/>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M13.5 10A5.5 5.5 0 016 2.5 5.5 5.5 0 108 13.5a5.5 5.5 0 005.5-3.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   );
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-  { id: 'channels',  label: 'Channels',  icon: <ChannelsIcon /> },
-  { id: 'emissions', label: '$ANTS', icon: <AntsTabIcon /> },
-  { id: 'diem-rewards', label: '$DIEM $ANTS', icon: <DiemTabIcon /> },
+  { id: 'overview',  label: 'Overview',  icon: <OverviewIcon /> },
+  { id: 'rewards',   label: 'Rewards',   icon: <RewardsIcon /> },
+  { id: 'activity',  label: 'Activity',  icon: <ActivityIcon /> },
+  { id: 'settings',  label: 'Settings',  icon: <SettingsIcon /> },
 ];
 
-export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme }: SidebarProps) {
+export function Sidebar({
+  activeTab,
+  onSelect,
+  isDark,
+  onToggleTheme,
+  walletAddress,
+  walletAuthorized,
+  onOpenWallet,
+}: SidebarProps) {
+  // Treat 'dashboard' as alias for 'overview' when highlighting
+  const effectiveActive =
+    activeTab === 'dashboard' ? 'overview' : activeTab;
+
   return (
-    <aside className="dash-sidebar">
-      <div className="dash-sidebar-brand">
-        <AntIcon size={22} />
-        <span className="dash-sidebar-title">AntSeed</span>
+    <aside className="portal-side">
+      <div className="portal-brand">
+        <span className="portal-brand-dot">◆</span>
+        AntSeed Portal
       </div>
 
-      <nav className="dash-sidebar-nav">
+      <nav className="portal-nav-wrap" aria-label="Main navigation">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
             type="button"
-            className={`dash-sidebar-item${activeTab === item.id ? ' dash-sidebar-item--active' : ''}`}
+            className={`portal-nav-item${effectiveActive === item.id ? ' active' : ''}`}
             onClick={() => onSelect(item.id)}
           >
-            <span className="dash-sidebar-item-icon">{item.icon}</span>
-            <span className="dash-sidebar-item-label">{item.label}</span>
+            <span className="portal-nav-icon">{item.icon}</span>
+            {item.label}
           </button>
         ))}
       </nav>
 
-      <div className="dash-sidebar-footer">
-        <div className="dash-sidebar-footer-row">
-          <button
-            type="button"
-            className="dash-sidebar-theme-toggle"
-            onClick={onToggleTheme}
-            title={isDark ? 'Switch to light' : 'Switch to dark'}
-          >
-            {isDark ? <SunIcon /> : <MoonIcon />}
-          </button>
-          <div className="dash-sidebar-network">
-            <span className="dash-sidebar-network-dot" />
-            Base
+      <div className="portal-wallet-footer">
+        {walletAddress ? (
+          <>
+            <button
+              type="button"
+              className="portal-wallet-addr"
+              onClick={onOpenWallet}
+              title="Open wallet"
+            >
+              {walletAddress}
+            </button>
+            <div className="portal-wallet-status">
+              <span className="portal-wallet-dot" aria-hidden="true" />
+              <span className={walletAuthorized ? 'portal-wallet-ok' : ''}>
+                {walletAuthorized ? 'authorized' : 'not authorized'}
+              </span>
+              <button
+                type="button"
+                className="portal-wallet-theme-toggle"
+                onClick={onToggleTheme}
+                title={isDark ? 'Switch to light' : 'Switch to dark'}
+              >
+                {isDark ? <SunIcon /> : <MoonIcon />}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="portal-wallet-status">
+            <span style={{ color: 'var(--muted)' }}>No wallet</span>
+            <button
+              type="button"
+              className="portal-wallet-theme-toggle"
+              onClick={onToggleTheme}
+              title={isDark ? 'Switch to light' : 'Switch to dark'}
+            >
+              {isDark ? <SunIcon /> : <MoonIcon />}
+            </button>
           </div>
-        </div>
+        )}
       </div>
     </aside>
   );

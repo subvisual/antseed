@@ -9,16 +9,26 @@ interface TopBarProps {
 }
 
 const TAB_TITLES: Record<TabId, string> = {
-  dashboard: 'Dashboard',
-  channels:  'Channels',
-  emissions: 'Emissions',
+  overview:      'Overview',
+  rewards:       'Rewards',
+  activity:      'Activity',
+  settings:      'Settings',
+  // legacy
+  dashboard:     'Overview',
+  channels:      'Channels',
+  emissions:     'Emissions',
   'diem-rewards': 'DIEM $ANTS',
 };
 
 const TAB_SUBTITLES: Record<TabId, string> = {
-  dashboard: 'Your balance, usage, and network activity at a glance.',
-  channels:  'Active and historical payment channels.',
-  emissions: 'Earn and claim ANTS rewards from network activity.',
+  overview:      'Your AntSeed account at a glance.',
+  rewards:       '$ANTS earned from network usage and DIEM staking.',
+  activity:      'Every deposit, withdrawal, claim, and settlement.',
+  settings:      'Budget, wallet, network, and appearance.',
+  // legacy
+  dashboard:     'Your balance, usage, and network activity at a glance.',
+  channels:      'Active and historical payment channels.',
+  emissions:     'Earn and claim ANTS rewards from network activity.',
   'diem-rewards': 'Track and claim ANTS rewards from DIEM staking.',
 };
 

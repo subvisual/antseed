@@ -9,23 +9,34 @@ import { LoaderOverlay } from './layout/LoaderOverlay';
 import { ActionModal } from './layout/ActionModal';
 import { DepositView } from './components/DepositView';
 import { WithdrawView } from './components/WithdrawView';
-import { DashboardView } from './views/DashboardView';
+import { OverviewView } from './views/OverviewView';
+import { RewardsView } from './views/RewardsView';
+import { ActivityView } from './views/ActivityView';
+import { SettingsView } from './views/SettingsView';
+import { ChannelsStubView } from './views/ChannelsStubView';
+// Legacy views kept for direct URL access
 import { EmissionsView } from './views/EmissionsView';
 import { DiemRewardsView } from './views/DiemRewardsView';
-import { ChannelsView } from './components/ChannelsView';
 import { AuthorizedWalletProvider } from './context/AuthorizedWalletContext';
 import { AuthorizeWalletAlert } from './layout/AuthorizeWalletAlert';
+import { useAuthorizedWallet } from './context/AuthorizedWalletContext';
 
 export type OverlayPhase = 'deposit' | 'success' | null;
 
-const VALID_TABS = new Set<TabId>(['dashboard', 'channels', 'emissions', 'diem-rewards']);
+// New 4-item portal nav + legacy sub-pages for backwards compat
+const VALID_TABS = new Set<TabId>([
+  'overview', 'rewards', 'activity', 'settings',
+  // legacy
+  'dashboard', 'channels', 'emissions', 'diem-rewards',
+]);
 
 function parseTabFromUrl(): TabId {
   const raw = new URLSearchParams(window.location.search).get('tab');
-  if (!raw) return 'dashboard';
-  // Legacy compat: the old deposits tab no longer exists; fall through to dashboard.
-  if (raw === 'deposit' || raw === 'deposits') return 'dashboard';
-  return VALID_TABS.has(raw as TabId) ? (raw as TabId) : 'dashboard';
+  if (!raw) return 'overview';
+  // Legacy compat: 'dashboard' → 'overview'
+  if (raw === 'dashboard') return 'overview';
+  if (raw === 'deposit' || raw === 'deposits') return 'overview';
+  return VALID_TABS.has(raw as TabId) ? (raw as TabId) : 'overview';
 }
 
 function shouldOpenDepositFromUrl(): boolean {
@@ -44,8 +55,13 @@ function writeTabToUrl(tab: TabId) {
 function clearDepositActionFromUrl() {
   const url = new URL(window.location.href);
   if (url.searchParams.get('action') === 'deposit') url.searchParams.delete('action');
-  if (url.searchParams.get('modal') === 'deposit') url.searchParams.delete('modal');
+  if (url.searchParams.get('modal') === 'deposit')  url.searchParams.delete('modal');
   window.history.replaceState({}, '', url.toString());
+}
+
+function truncateAddress(addr: string): string {
+  if (!addr || addr.length < 10) return addr;
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
 export function App() {
@@ -54,7 +70,9 @@ export function App() {
   const [config, setConfig] = useState<PaymentConfig | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => parseTabFromUrl());
   const [walletDrawerOpen, setWalletDrawerOpen] = useState(false);
-  const [actionModal, setActionModal] = useState<'deposit' | 'withdraw' | null>(() => shouldOpenDepositFromUrl() ? 'deposit' : null);
+  const [actionModal, setActionModal] = useState<'deposit' | 'withdraw' | null>(
+    () => shouldOpenDepositFromUrl() ? 'deposit' : null,
+  );
   const [sessionExpired, setSessionExpired] = useState(false);
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('antseed-payments-theme');
@@ -98,7 +116,7 @@ export function App() {
     writeTabToUrl(tab);
   }, []);
 
-  const openDeposit = useCallback(() => setActionModal('deposit'), []);
+  const openDeposit  = useCallback(() => setActionModal('deposit'), []);
   const openWithdraw = useCallback(() => setActionModal('withdraw'), []);
   const closeActionModal = useCallback(() => {
     setActionModal(null);
@@ -187,6 +205,7 @@ function AppShell({
 }: AppShellProps) {
   const [justDeposited, setJustDeposited] = useState(false);
   const [depositPromptDismissed, setDepositPromptDismissed] = useState(false);
+  const authorizedWallet = useAuthorizedWallet();
 
   const isLoading = !balanceLoaded;
   const isEmptyBuyer =
@@ -207,8 +226,16 @@ function AppShell({
     await refreshBalance();
   }, [refreshBalance, onCloseActionModal]);
 
-  const dismissSuccess = useCallback(() => setJustDeposited(false), []);
+  const dismissSuccess       = useCallback(() => setJustDeposited(false), []);
   const dismissDepositPrompt = useCallback(() => setDepositPromptDismissed(true), []);
+
+  // Navigate to channels sub-page
+  const goToChannels = useCallback(() => onSelectTab('channels'), [onSelectTab]);
+  const goToActivity = useCallback(() => onSelectTab('activity'), [onSelectTab]);
+  const goToRewards  = useCallback(() => onSelectTab('rewards'),  [onSelectTab]);
+
+  const shortAddr = buyerEvmAddress ? truncateAddress(buyerEvmAddress) : null;
+  const isAuthorized = authorizedWallet.operatorSet === true;
 
   return (
     <>
@@ -218,6 +245,9 @@ function AppShell({
           onSelect={onSelectTab}
           isDark={isDark}
           onToggleTheme={onToggleTheme}
+          walletAddress={shortAddr}
+          walletAuthorized={isAuthorized}
+          onOpenWallet={onOpenWalletDrawer}
         />
         <div className="dash-main">
           <TopBar
@@ -228,10 +258,31 @@ function AppShell({
           />
           <AuthorizeWalletAlert />
           <main className="dash-content">
-            {activeTab === 'dashboard' && <DashboardView config={config} />}
-            {activeTab === 'channels'  && <ChannelsView  config={config} />}
-            {activeTab === 'emissions' && <EmissionsView config={config} />}
-            {activeTab === 'diem-rewards' && <DiemRewardsView config={config} />}
+            {/* New 4-item portal nav */}
+            {(activeTab === 'overview' || activeTab === 'dashboard') && (
+              <OverviewView
+                balance={balance}
+                config={config}
+                onOpenDeposit={onOpenDeposit}
+                onOpenWithdraw={onOpenWithdraw}
+                onGoToChannels={goToChannels}
+                onGoToActivity={goToActivity}
+                onGoToRewards={goToRewards}
+              />
+            )}
+            {activeTab === 'rewards'  && <RewardsView  config={config} />}
+            {activeTab === 'activity' && <ActivityView config={config} />}
+            {activeTab === 'settings' && <SettingsView config={config} />}
+            {/* Channels: reachable via Overview "details" link or direct URL */}
+            {activeTab === 'channels' && (
+              <ChannelsStubView
+                config={config}
+                onBack={() => onSelectTab('overview')}
+              />
+            )}
+            {/* Legacy views kept for backwards compat / direct URL access */}
+            {activeTab === 'emissions'     && <EmissionsView   config={config} />}
+            {activeTab === 'diem-rewards'  && <DiemRewardsView config={config} />}
           </main>
         </div>
         <WalletDrawer
