@@ -34,3 +34,63 @@
   padding: 0.625rem 0.75rem;
   line-height: 1.5;
 }
+
+/* ── Responsive: narrow screens ── */
+
+@media (max-width: 540px) {
+  /* Balance/rewards hero: stack columns */
+  .overview-top {
+    flex-direction: column;
+    gap: var(--sp-5);
+  }
+
+  .overview-vrule {
+    display: none;
+  }
+
+  .overview-rew-col {
+    padding-top: var(--sp-4);
+    border-top: 1px solid var(--border);
+  }
+
+  /* Stat row: wrap to 2-up grid */
+  .portal-stats {
+    flex-wrap: wrap;
+  }
+
+  .portal-stat {
+    flex: 0 0 calc(50% - 0.75rem);
+    border-left: none;
+    padding-left: 0;
+    padding-right: 0;
+
+    &:nth-child(odd) {
+      border-right: 1px solid rgba(0, 0, 0, 0.07);
+      [data-theme="dark"] & { border-right-color: rgba(255, 255, 255, 0.06); }
+      padding-right: 0.875rem;
+    }
+
+    &:nth-child(even) {
+      padding-left: 0.875rem;
+    }
+
+    &:nth-child(n + 3) {
+      padding-top: 0.875rem;
+      border-top: 1px solid rgba(0, 0, 0, 0.07);
+      [data-theme="dark"] & { border-top-color: rgba(255, 255, 255, 0.06); }
+    }
+  }
+
+  /* Two-column usage/activity: stack */
+  .overview-cols {
+    grid-template-columns: 1fr;
+    gap: var(--sp-6);
+  }
+}
+
+@media (max-width: 768px) {
+  /* Prevent horizontal overflow on the actions row */
+  .overview-actions {
+    flex-wrap: wrap;
+  }
+}

@@ -353,3 +353,54 @@
     }
   }
 }
+
+/* ── Tx link in success banner ── */
+.rewards-tx-link {
+  color: var(--accent-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: inherit;
+
+  &:hover { filter: brightness(1.1); }
+
+  [data-theme="dark"] & { color: var(--accent); }
+}
+
+.rewards-tx-raw {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+/* ── Responsive: narrow screens ── */
+
+@media (max-width: 540px) {
+  /* Hero: stack value + button */
+  .rewards-hero-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-3);
+  }
+
+  /* Epoch chart: allow horizontal scroll instead of squishing */
+  .rewards-chart-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rewards-chart {
+    min-width: 22rem; /* ensures bars stay readable at narrow widths */
+  }
+
+  /* Current-epoch summary: stack the three items */
+  .rewards-epline {
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+
+  /* Claim sheet: full-width on small screens */
+  .rewards-sheet {
+    width: calc(100vw - 2rem);
+    max-width: 22rem;
+  }
+}

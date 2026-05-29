@@ -277,3 +277,29 @@
     color: var(--text-secondary);
   }
 }
+
+/* ── Responsive: narrow screens ── */
+
+@media (max-width: 540px) {
+  /* Stack two-column setting rows: description above, control below */
+  .set-item {
+    grid-template-columns: 1fr;
+    gap: var(--sp-3);
+  }
+
+  .set-ctrl {
+    justify-self: start;
+    width: 100%;
+  }
+
+  .set-input-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Narrower control column so text isn't squished */
+  .set-item {
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 15rem);
+  }
+}

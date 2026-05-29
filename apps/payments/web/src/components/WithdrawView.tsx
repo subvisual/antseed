@@ -6,6 +6,7 @@ import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
 import { useWithdraw } from '../hooks/useWithdraw';
 import { useOptimisticBalance } from '../hooks/useOptimisticBalance';
 import { usePaymentNetwork } from '../payment-network';
+import { getExplorerTxUrl } from '../utils/txLink';
 import './WithdrawView.scss';
 
 interface WithdrawViewProps {
@@ -29,14 +30,7 @@ function formatUsd(n: number): string {
 /** Derive a Base block-explorer tx link from a hash, or null if chain unknown. */
 function getTxLink(config: PaymentConfig | null, txHash: string | undefined): string | null {
   if (!txHash || !config) return null;
-  // Base mainnet = 8453, Base testnet = 84532
-  if (config.evmChainId === 8453) {
-    return `https://basescan.org/tx/${txHash}`;
-  }
-  if (config.evmChainId === 84532) {
-    return `https://sepolia.basescan.org/tx/${txHash}`;
-  }
-  return null;
+  return getExplorerTxUrl(txHash, config.evmChainId ?? undefined);
 }
 
 export function WithdrawView({ config, balance: balanceFallback, onAction }: WithdrawViewProps) {

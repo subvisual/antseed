@@ -56,7 +56,27 @@
     flex-wrap: wrap;
     gap: var(--sp-2);
 
-    .channels-drill-action { margin-left: auto; }
+    .channels-drill-reserved {
+      order: 2;
+    }
+
+    .channels-drill-pill-col {
+      order: 3;
+    }
+
+    .channels-drill-action {
+      order: 4;
+      margin-left: auto;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    .channels-drill-error-block {
+      order: 5;
+      width: 100%;
+    }
   }
 }
 
@@ -107,6 +127,11 @@
   margin-top: var(--sp-1);
   font-size: 0.6875rem;
   color: var(--danger);
+}
+
+.channels-drill-error-block {
+  margin-top: var(--sp-2);
+  /* dv-error styles handle background/border/padding */
 }
 
 /* ── Empty / loading state ── */

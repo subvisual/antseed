@@ -11,6 +11,7 @@ import { formatUnits, parseUnits, maxUint256 } from 'viem';
 import type { BalanceData, PaymentConfig } from '../types';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { useOptimisticBalance } from '../hooks/useOptimisticBalance';
+import { getExplorerTxUrl } from '../utils/txLink';
 import './DepositView.scss';
 
 const MIN_FIRST_DEPOSIT = 1; // USDC — matches AntseedDeposits.MIN_BUYER_DEPOSIT
@@ -36,15 +37,6 @@ function safeParseUsdc(value: string): bigint {
   } catch {
     return 0n;
   }
-}
-
-function getExplorerTxUrl(txHash: string, chainId?: number): string | null {
-  if (!txHash) return null;
-  // Base mainnet
-  if (chainId === 8453) return `https://basescan.org/tx/${txHash}`;
-  // Base Sepolia
-  if (chainId === 84532) return `https://sepolia.basescan.org/tx/${txHash}`;
-  return null;
 }
 
 interface DepositViewProps {

@@ -32,6 +32,7 @@ import { EMISSIONS_CLAIM_ABI } from '../emissions-abi';
 import { DIEM_STAKING_PROXY_ABI, DIEM_STAKING_PROXY_ADDRESS } from '../diem-proxy-abi';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
+import { getExplorerTxUrl } from '../utils/txLink';
 import './RewardsView.scss';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -211,6 +212,9 @@ interface ClaimSheetProps {
   onCancel: () => void;
   isSubmitting: boolean;
   error: string | null;
+  errorDetail: string | null;
+  errorOpen: boolean;
+  onToggleErrorDetail: () => void;
 }
 
 function ClaimSheet({
@@ -220,6 +224,9 @@ function ClaimSheet({
   onCancel,
   isSubmitting,
   error,
+  errorDetail,
+  errorOpen,
+  onToggleErrorDetail,
 }: ClaimSheetProps) {
   const total = totalEmissions + totalDiem;
   return (
@@ -237,7 +244,24 @@ function ClaimSheet({
           )}
         </p>
         {error && (
-          <div className="status-msg status-error rewards-sheet-error">{error}</div>
+          <div className="rewards-sheet-error dv-error" role="alert">
+            <div className="dv-error-summary">
+              <span>{error}</span>
+              {errorDetail && (
+                <button
+                  type="button"
+                  className="dv-error-toggle"
+                  onClick={onToggleErrorDetail}
+                  aria-expanded={errorOpen}
+                >
+                  {errorOpen ? 'Hide detail' : 'Show detail'}
+                </button>
+              )}
+            </div>
+            {errorOpen && errorDetail && (
+              <div className="dv-error-detail">{errorDetail}</div>
+            )}
+          </div>
         )}
         <div className="rewards-sheet-actions">
           <button
@@ -278,7 +302,10 @@ export function RewardsView({ config }: RewardsViewProps) {
   // ── UI state ──
   const [showClaimSheet, setShowClaimSheet] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimErrorDetail, setClaimErrorDetail] = useState<string | null>(null);
+  const [claimErrorOpen, setClaimErrorOpen] = useState(false);
   const [claimSuccess, setClaimSuccess] = useState(false);
+  const [claimedTxHash, setClaimedTxHash] = useState<string | null>(null);
 
   const buyerAddress = config?.evmAddress ?? null;
   const { expectedChainId, ensureCorrectNetwork } = usePaymentNetwork(config);
@@ -503,7 +530,10 @@ export function RewardsView({ config }: RewardsViewProps) {
   const handleClaimAll = useCallback(() => {
     setShowClaimSheet(true);
     setClaimError(null);
+    setClaimErrorDetail(null);
+    setClaimErrorOpen(false);
     setClaimSuccess(false);
+    setClaimedTxHash(null);
   }, []);
 
   const handleConfirmClaim = useCallback(() => {
@@ -528,7 +558,11 @@ export function RewardsView({ config }: RewardsViewProps) {
             chainId: expectedChainId,
             args: [sellerEpochs],
           }, {
-            onError: (err) => setClaimError(getErrorMessage(err)),
+            onSuccess: (hash) => setClaimedTxHash(hash),
+            onError: (err) => {
+              setClaimError('Seller emissions claim failed.');
+              setClaimErrorDetail(getErrorMessage(err));
+            },
           });
           claimed = true;
         }
@@ -541,7 +575,11 @@ export function RewardsView({ config }: RewardsViewProps) {
             chainId: expectedChainId,
             args: [buyerAddress as `0x${string}`, buyerEpochs],
           }, {
-            onError: (err) => setClaimError(getErrorMessage(err)),
+            onSuccess: (hash) => setClaimedTxHash(hash),
+            onError: (err) => {
+              setClaimError('Buyer emissions claim failed.');
+              setClaimErrorDetail(getErrorMessage(err));
+            },
           });
           claimed = true;
         }
@@ -554,7 +592,11 @@ export function RewardsView({ config }: RewardsViewProps) {
             chainId: expectedChainId,
             args: [diemClaimableEpochs],
           }, {
-            onError: (err) => setClaimError(getErrorMessage(err)),
+            onSuccess: (hash) => setClaimedTxHash(hash),
+            onError: (err) => {
+              setClaimError('DIEM claim failed.');
+              setClaimErrorDetail(getErrorMessage(err));
+            },
           });
           claimed = true;
         }
@@ -663,6 +705,14 @@ export function RewardsView({ config }: RewardsViewProps) {
         {claimSuccess && (
           <div className="status-msg status-success rewards-claim-success">
             Claim confirmed — $ANTS sent to your wallet.
+            {claimedTxHash && (() => {
+              const url = getExplorerTxUrl(claimedTxHash, expectedChainId);
+              return url ? (
+                <>{' '}<a href={url} target="_blank" rel="noopener noreferrer" className="rewards-tx-link">View tx ↗</a></>
+              ) : (
+                <>{' '}<span className="rewards-tx-raw">{claimedTxHash.slice(0, 10)}…{claimedTxHash.slice(-6)}</span></>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -785,9 +835,12 @@ export function RewardsView({ config }: RewardsViewProps) {
           totalEmissions={totalEmissionsClaimable}
           totalDiem={totalDiemClaimable}
           onConfirm={handleConfirmClaim}
-          onCancel={() => { setShowClaimSheet(false); setClaimError(null); }}
+          onCancel={() => { setShowClaimSheet(false); setClaimError(null); setClaimErrorDetail(null); setClaimErrorOpen(false); }}
           isSubmitting={isAnyClaiming}
           error={claimError}
+          errorDetail={claimErrorDetail}
+          errorOpen={claimErrorOpen}
+          onToggleErrorDetail={() => setClaimErrorOpen((v) => !v)}
         />
       )}
     </div>

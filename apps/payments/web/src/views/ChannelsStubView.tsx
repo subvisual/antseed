@@ -11,6 +11,7 @@ import { CHANNELS_ABI } from '../channels-abi';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { useChannels } from '../hooks/useChannels';
 import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
+import { getExplorerTxUrl } from '../utils/txLink';
 import './ChannelsView.scss';
 
 interface ChannelsStubViewProps {
@@ -97,6 +98,8 @@ function ChannelRow({
   const { expectedChainId, ensureCorrectNetwork } = usePaymentNetwork(config);
   const { requireAuthorization } = useAuthorizedWallet();
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [errorOpen, setErrorOpen] = useState(false);
 
   const { writeContract: writeRequestClose, data: closeTxHash } = useWriteContract();
   const { isSuccess: closeConfirmed } = useWaitForTransactionReceipt({
@@ -113,6 +116,8 @@ function ChannelRow({
   const handleRequestClose = useCallback(() => {
     requireAuthorization(async () => {
       setError(null);
+      setErrorDetail(null);
+      setErrorOpen(false);
       try {
         await ensureCorrectNetwork();
         writeRequestClose({
@@ -121,6 +126,11 @@ function ChannelRow({
           functionName: 'requestClose',
           chainId: expectedChainId,
           args: [ch.channelId as `0x${string}`],
+        }, {
+          onError: (err) => {
+            setError('Close request failed.');
+            setErrorDetail(getErrorMessage(err));
+          },
         });
       } catch (err) {
         setError(getErrorMessage(err));
@@ -131,6 +141,8 @@ function ChannelRow({
   const handleWithdraw = useCallback(() => {
     requireAuthorization(async () => {
       setError(null);
+      setErrorDetail(null);
+      setErrorOpen(false);
       try {
         await ensureCorrectNetwork();
         writeWithdraw({
@@ -139,12 +151,20 @@ function ChannelRow({
           functionName: 'withdraw',
           chainId: expectedChainId,
           args: [ch.channelId as `0x${string}`],
+        }, {
+          onError: (err) => {
+            setError('Withdraw failed.');
+            setErrorDetail(getErrorMessage(err));
+          },
         });
       } catch (err) {
         setError(getErrorMessage(err));
       }
     });
   }, [config.channelsContractAddress, ensureCorrectNetwork, expectedChainId, ch.channelId, writeWithdraw, requireAuthorization]);
+
+  // The most recently broadcast tx hash for explorer link
+  const lastTxHash = withdrawTxHash ?? closeTxHash ?? null;
 
   const pillMeta = STATUS_PILL[status];
   const pillLabel =
@@ -192,7 +212,40 @@ function ChannelRow({
         ) : (
           <span />
         )}
-        {error && <div className="channels-drill-error">{error}</div>}
+        {error && (
+          <div className="channels-drill-error-block dv-error" role="alert">
+            <div className="dv-error-summary">
+              <span>{error}</span>
+              {errorDetail && (
+                <button
+                  type="button"
+                  className="dv-error-toggle"
+                  onClick={() => setErrorOpen((v) => !v)}
+                  aria-expanded={errorOpen}
+                >
+                  {errorOpen ? 'Hide detail' : 'Show detail'}
+                </button>
+              )}
+            </div>
+            {errorOpen && errorDetail && (
+              <div className="dv-error-detail">{errorDetail}</div>
+            )}
+            {lastTxHash && (() => {
+              const url = getExplorerTxUrl(lastTxHash, expectedChainId);
+              return (
+                <div className="dv-error-hash">
+                  {url ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="dv-error-hash-link">
+                      View tx ↗
+                    </a>
+                  ) : (
+                    <span className="dv-error-hash-raw">{lastTxHash.slice(0, 18)}…</span>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
     </div>
   );

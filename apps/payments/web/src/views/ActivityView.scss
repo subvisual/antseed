@@ -154,3 +154,23 @@
     color: var(--accent-dark);
   }
 }
+
+/* ── Responsive: narrow screens ── */
+
+@media (max-width: 540px) {
+  /* Filter chips: allow wrap (already has flex-wrap, just ensure toolbar also stacks) */
+  .act-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Transaction rows: wrap label + amount */
+  .act-row {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+
+  .act-row__amount {
+    margin-left: auto;
+  }
+}
