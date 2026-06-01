@@ -16,6 +16,7 @@ interface ChannelsViewProps {
 
 const GRACE_PERIOD = 900; // 15 minutes in seconds
 const PAGE_SIZE = 10;
+type ActivityFilter = 'all' | 'settlements' | 'closes';
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -47,6 +48,19 @@ const STATUS_META: Record<RowStatus, { label: string; modifier: string }> = {
   timedout:     { label: 'Timed out',    modifier: 'status-pill--muted' },
   closed:       { label: 'Closed',       modifier: 'status-pill--muted' },
 };
+
+function matchesFilter(session: ChannelData, filter: ActivityFilter): boolean {
+  if (filter === 'all') return true;
+  const status = getRowStatus(session);
+  if (filter === 'settlements') return status === 'settled';
+  return status === 'closing' || status === 'withdrawable' || status === 'closed' || status === 'timedout';
+}
+
+function getEmptyMessage(filter: ActivityFilter): string {
+  if (filter === 'settlements') return 'No settlements match this filter.';
+  if (filter === 'closes') return 'No channel closes match this filter.';
+  return 'No activity yet. Complete a request to see settlements here.';
+}
 
 function formatTimeRemaining(closeRequestedAt: number): string {
   const now = Math.floor(Date.now() / 1000);
@@ -175,7 +189,7 @@ function ChannelRow({
 export function ChannelsView({ config }: ChannelsViewProps) {
   const { channels, history, loading, refetch } = useChannels(config);
   const [page, setPage] = useState(0);
-  const [filter, setFilter] = useState<'all' | 'settlements' | 'closes'>('all');
+  const [filter, setFilter] = useState<ActivityFilter>('all');
 
   const fetchData = useCallback(async () => {
     await refetch();
@@ -183,16 +197,28 @@ export function ChannelsView({ config }: ChannelsViewProps) {
 
   // Active first, then history — keeps actionable rows on page one.
   const allChannels = useMemo(() => [...channels, ...history], [channels, history]);
+  const filteredChannels = useMemo(
+    () => allChannels.filter((session) => matchesFilter(session, filter)),
+    [allChannels, filter],
+  );
 
-  const pageCount = Math.max(1, Math.ceil(allChannels.length / PAGE_SIZE));
+  const handleFilterChange = useCallback((nextFilter: ActivityFilter) => {
+    setFilter(nextFilter);
+    setPage(0);
+  }, []);
+
+  const pageCount = Math.max(1, Math.ceil(filteredChannels.length / PAGE_SIZE));
   useEffect(() => {
     if (page > pageCount - 1) setPage(pageCount - 1);
   }, [page, pageCount]);
 
   const pageRows = useMemo(
-    () => allChannels.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [allChannels, page],
+    () => filteredChannels.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filteredChannels, page],
   );
+  const activitySummary = allChannels.length === filteredChannels.length
+    ? `${allChannels.length} entries`
+    : `${filteredChannels.length} of ${allChannels.length} entries`;
 
   return (
     <div className="activity-view">
@@ -203,17 +229,17 @@ export function ChannelsView({ config }: ChannelsViewProps) {
 
       <div className="activity-toolbar">
         <div className="activity-filter-group" role="group" aria-label="Activity filter">
-          <button type="button" className={filter === 'all' ? 'is-active' : ''} onClick={() => setFilter('all')}>All</button>
-          <button type="button" className={filter === 'settlements' ? 'is-active' : ''} onClick={() => setFilter('settlements')}>Settlements</button>
-          <button type="button" className={filter === 'closes' ? 'is-active' : ''} onClick={() => setFilter('closes')}>Channel closes</button>
+          <button type="button" className={filter === 'all' ? 'is-active' : ''} onClick={() => handleFilterChange('all')}>All</button>
+          <button type="button" className={filter === 'settlements' ? 'is-active' : ''} onClick={() => handleFilterChange('settlements')}>Settlements</button>
+          <button type="button" className={filter === 'closes' ? 'is-active' : ''} onClick={() => handleFilterChange('closes')}>Channel closes</button>
         </div>
-        <div className="activity-window">Last 30 days</div>
+        <div className="activity-window">{activitySummary}</div>
       </div>
 
       {loading && allChannels.length === 0 ? (
         <div className="activity-empty">Loading activity…</div>
-      ) : allChannels.length === 0 ? (
-        <div className="activity-empty">No activity yet. Complete a request to see settlements here.</div>
+      ) : filteredChannels.length === 0 ? (
+        <div className="activity-empty">{getEmptyMessage(filter)}</div>
       ) : (
         <div className="activity-table-card">
           <div className="channels-table-wrap">

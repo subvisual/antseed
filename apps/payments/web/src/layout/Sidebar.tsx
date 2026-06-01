@@ -76,6 +76,7 @@ function truncateAddress(address: string | null): string {
 
 export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme, buyerAddress }: SidebarProps) {
   const { operatorSet } = useAuthorizedWallet();
+  const authLabel = operatorSet === null ? 'checking' : operatorSet ? 'authorized' : 'not authorized';
 
   return (
     <aside className="dash-sidebar">
@@ -110,7 +111,7 @@ export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme, buyerAddre
         <div className="dash-sidebar-footer-row">
           <div className="dash-sidebar-auth-state">
             <span className={operatorSet ? 'is-authorized' : ''} />
-            {operatorSet ? 'authorized' : 'not authorized'}
+            {authLabel}
           </div>
           <button
             type="button"

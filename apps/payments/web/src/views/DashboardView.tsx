@@ -14,8 +14,11 @@ import './DashboardView.scss';
 interface DashboardViewProps {
   config: PaymentConfig | null;
   balance: BalanceData | null;
+  onOpenWallet: () => void;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
+  onOpenRewards: () => void;
+  onOpenActivity: () => void;
 }
 
 const EMPTY_CHANNELS: BuyerUsageChannelPoint[] = [];
@@ -37,7 +40,15 @@ function formatAnts(value: bigint): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
-export function DashboardView({ config, balance, onOpenDeposit, onOpenWithdraw }: DashboardViewProps) {
+export function DashboardView({
+  config,
+  balance,
+  onOpenWallet,
+  onOpenDeposit,
+  onOpenWithdraw,
+  onOpenRewards,
+  onOpenActivity,
+}: DashboardViewProps) {
   const [buyerUsage, setBuyerUsage] = useState<BuyerUsageTotals | null>(null);
   const [buyerUsageError, setBuyerUsageError] = useState(false);
   const [claimableAnts, setClaimableAnts] = useState<bigint>(0n);
@@ -113,7 +124,7 @@ export function DashboardView({ config, balance, onOpenDeposit, onOpenWithdraw }
           </div>
           <p>
             ${available} available · ${reserved} in {buyerUsage?.activeChannels ?? 0} active channels ·{' '}
-            <button type="button" onClick={onOpenWithdraw}>details</button>
+            <button type="button" onClick={onOpenWallet}>details</button>
           </p>
           <div className="overview-actions">
             <button type="button" className="portal-primary-btn" onClick={onOpenDeposit}>+ Add funds</button>
@@ -128,7 +139,9 @@ export function DashboardView({ config, balance, onOpenDeposit, onOpenWithdraw }
             {formatAnts(claimableAnts)} $ANTS
           </div>
           <p>emissions + DIEM</p>
-          <button type="button" className="portal-primary-btn" disabled={claimableAnts === 0n}>Claim all</button>
+          <button type="button" className="portal-primary-btn" onClick={onOpenRewards}>
+            View rewards
+          </button>
         </div>
       </section>
 
@@ -163,7 +176,7 @@ export function DashboardView({ config, balance, onOpenDeposit, onOpenWithdraw }
         <div className="overview-recent">
           <div className="overview-recent-head">
             <div className="portal-kicker">Recent activity</div>
-            <button type="button">View all →</button>
+            <button type="button" onClick={onOpenActivity}>View all →</button>
           </div>
           <p>No activity yet.</p>
         </div>

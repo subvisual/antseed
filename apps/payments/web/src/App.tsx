@@ -235,8 +235,11 @@ function AppShell({
               <DashboardView
                 config={config}
                 balance={balance}
+                onOpenWallet={onOpenWalletDrawer}
                 onOpenDeposit={onOpenDeposit}
                 onOpenWithdraw={onOpenWithdraw}
+                onOpenRewards={() => onSelectTab('rewards')}
+                onOpenActivity={() => onSelectTab('activity')}
               />
             )}
             {activeTab === 'rewards' && <EmissionsView config={config} />}

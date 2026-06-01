@@ -23,7 +23,6 @@ export function SettingsView({ config, balance, isDark, onToggleTheme }: Setting
   const [monthlyBudget, setMonthlyBudget] = useState('');
   const [lowBalanceNudge, setLowBalanceNudge] = useState('');
   const [pauseAtCap, setPauseAtCap] = useState(false);
-  const [rpcUrl, setRpcUrl] = useState(config?.rpcUrl ?? '');
   const { operatorSet, operator, requireAuthorization } = useAuthorizedWallet();
 
   const operatorLabel = useMemo(() => {
@@ -58,7 +57,6 @@ export function SettingsView({ config, balance, isDark, onToggleTheme }: Setting
                   onChange={(event) => setMonthlyBudget(event.target.value)}
                 />
               </label>
-              <button type="button" disabled={!monthlyBudget}>Set</button>
             </div>
           </div>
 
@@ -92,7 +90,6 @@ export function SettingsView({ config, balance, isDark, onToggleTheme }: Setting
                   onChange={(event) => setLowBalanceNudge(event.target.value)}
                 />
               </label>
-              <button type="button" disabled={!lowBalanceNudge}>Set</button>
             </div>
           </div>
 
@@ -114,8 +111,13 @@ export function SettingsView({ config, balance, isDark, onToggleTheme }: Setting
               <h2>Authorized wallet</h2>
               <p>Your AntSeed node signs spending requests but never holds USDC or ANTS. This external wallet can recover funds and claim rewards.</p>
             </div>
-            <button type="button" className="portal-secondary-btn" onClick={() => requireAuthorization()}>
-              {operatorSet ? operatorLabel : 'Authorize wallet…'}
+            <button
+              type="button"
+              className="portal-secondary-btn"
+              disabled={operatorSet === null}
+              onClick={() => requireAuthorization()}
+            >
+              {operatorSet === false ? 'Authorize wallet…' : operatorLabel}
             </button>
           </div>
           <div className="settings-row settings-row--split">
@@ -144,15 +146,14 @@ export function SettingsView({ config, balance, isDark, onToggleTheme }: Setting
           <div className="settings-row settings-row--split">
             <div>
               <h2>RPC endpoint</h2>
-              <p>Override the default RPC URL. Changes take effect after reloading the portal.</p>
+              <p>Configured by the active AntSeed node. Change it in node config, then reopen the portal.</p>
             </div>
             <div className="settings-inline-control">
               <input
-                value={rpcUrl}
-                onChange={(event) => setRpcUrl(event.target.value)}
+                value={config?.rpcUrl ?? ''}
+                readOnly
                 placeholder="http://127.0.0.1:8545"
               />
-              <button type="button">Save</button>
             </div>
           </div>
         </div>
