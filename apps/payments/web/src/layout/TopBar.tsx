@@ -19,7 +19,7 @@ const TAB_SUBTITLES: Record<TabId, string> = {
   overview: 'Your AntSeed account at a glance.',
   rewards:  '$ANTS earned from network usage and DIEM staking.',
   activity: 'Every deposit, withdrawal, claim, and settlement.',
-  settings: 'Budget, wallet, network, and appearance.',
+  settings: 'Wallet, network, and appearance.',
 };
 
 function formatUsd(n: number): string {

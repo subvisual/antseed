@@ -247,7 +247,6 @@ function AppShell({
             {activeTab === 'settings' && (
               <SettingsView
                 config={config}
-                balance={balance}
                 isDark={isDark}
                 onToggleTheme={onToggleTheme}
               />
