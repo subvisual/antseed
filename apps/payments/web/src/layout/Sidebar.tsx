@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
+import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
 
-export type TabId = 'dashboard' | 'channels' | 'emissions' | 'diem-rewards';
+export type TabId = 'overview' | 'rewards' | 'activity' | 'settings';
 
 interface SidebarProps {
   activeTab: TabId;
   onSelect: (tab: TabId) => void;
   isDark: boolean;
   onToggleTheme: () => void;
+  buyerAddress: string | null;
 }
 
 interface NavItem {
@@ -15,41 +17,36 @@ interface NavItem {
   icon: ReactNode;
 }
 
-function DashboardIcon() {
+function OverviewIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-      <rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="10" y="2.5" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="2.5" y="10" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
-      <rect x="10" y="10" width="5.5" height="5.5" rx="1" strokeLinejoin="round"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M9 2.75L15.25 9L9 15.25L2.75 9L9 2.75Z" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function ChannelsIcon() {
+function RewardsIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1.5" y="4.25" width="15" height="9.5" rx="1.25"/>
-      <circle cx="9" cy="9" r="2"/>
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M9 2.5L10.9 6.35L15.15 6.98L12.08 9.96L12.8 14.2L9 12.2L5.2 14.2L5.92 9.96L2.85 6.98L7.1 6.35L9 2.5Z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function AntsTabIcon() {
-  return <AntIcon size={18} />;
+function ActivityIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M2.5 9H5.7L7.15 5.25L10.15 12.75L11.8 9H15.5" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
-function DiemTabIcon() {
+function SettingsIcon() {
   return (
-    <img
-      src="/diem-logo.png"
-      width="18"
-      height="18"
-      alt=""
-      aria-hidden="true"
-      decoding="async"
-      className="dash-sidebar-token-icon"
-    />
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <circle cx="9" cy="9" r="2.25" stroke="currentColor" strokeWidth="1.35" />
+      <path d="M9 2.6V4.25M9 13.75V15.4M4.47 4.47L5.65 5.65M12.35 12.35L13.53 13.53M2.6 9H4.25M13.75 9H15.4M4.47 13.53L5.65 12.35M12.35 5.65L13.53 4.47" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -65,37 +62,26 @@ function MoonIcon() {
   );
 }
 
-function AntIcon({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14 9.625C14.9665 9.625 15.75 8.763 15.75 7.7C15.75 6.637 14.9665 5.775 14 5.775C13.0335 5.775 12.25 6.637 12.25 7.7C12.25 8.763 13.0335 9.625 14 9.625Z" fill="currentColor"/>
-      <path d="M14 15.4C15.353 15.4 16.45 14.146 16.45 12.6C16.45 11.054 15.353 9.8 14 9.8C12.647 9.8 11.55 11.054 11.55 12.6C11.55 14.146 12.647 15.4 14 15.4Z" fill="currentColor"/>
-      <path d="M14 23.45C15.74 23.45 17.15 21.57 17.15 19.25C17.15 16.93 15.74 15.05 14 15.05C12.26 15.05 10.85 16.93 10.85 19.25C10.85 21.57 12.26 23.45 14 23.45Z" fill="currentColor"/>
-      <path opacity="0.6" d="M12.95 5.95L9.8 2.1" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round"/>
-      <path opacity="0.6" d="M15.05 5.95L18.2 2.1" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round"/>
-      <circle cx="9.8" cy="2.1" r="0.875" fill="currentColor"/>
-      <circle cx="18.2" cy="2.1" r="0.875" fill="currentColor"/>
-      <path opacity="0.4" d="M12.25 11.2L6.125 7.7" stroke="currentColor" strokeWidth="0.52" strokeLinecap="round"/>
-      <path opacity="0.4" d="M15.75 11.2L21.875 7.7" stroke="currentColor" strokeWidth="0.52" strokeLinecap="round"/>
-      <circle cx="6.3" cy="7.7" r="0.875" fill="currentColor"/>
-      <circle cx="21.7" cy="7.7" r="0.875" fill="currentColor"/>
-    </svg>
-  );
-}
-
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-  { id: 'channels',  label: 'Channels',  icon: <ChannelsIcon /> },
-  { id: 'emissions', label: '$ANTS', icon: <AntsTabIcon /> },
-  { id: 'diem-rewards', label: '$DIEM $ANTS', icon: <DiemTabIcon /> },
+  { id: 'overview', label: 'Overview', icon: <OverviewIcon /> },
+  { id: 'rewards',  label: 'Rewards',  icon: <RewardsIcon /> },
+  { id: 'activity', label: 'Activity', icon: <ActivityIcon /> },
+  { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
 ];
 
-export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme }: SidebarProps) {
+function truncateAddress(address: string | null): string {
+  if (!address) return 'No signer';
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme, buyerAddress }: SidebarProps) {
+  const { operatorSet } = useAuthorizedWallet();
+
   return (
     <aside className="dash-sidebar">
       <div className="dash-sidebar-brand">
-        <AntIcon size={22} />
-        <span className="dash-sidebar-title">AntSeed</span>
+        <span className="dash-sidebar-brand-mark" aria-hidden="true" />
+        <span className="dash-sidebar-title">AntSeed Portal</span>
       </div>
 
       <nav className="dash-sidebar-nav">
@@ -113,7 +99,19 @@ export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme }: SidebarP
       </nav>
 
       <div className="dash-sidebar-footer">
+        <button
+          type="button"
+          className="dash-sidebar-address"
+          title={buyerAddress ?? undefined}
+          disabled={!buyerAddress}
+        >
+          {truncateAddress(buyerAddress)}
+        </button>
         <div className="dash-sidebar-footer-row">
+          <div className="dash-sidebar-auth-state">
+            <span className={operatorSet ? 'is-authorized' : ''} />
+            {operatorSet ? 'authorized' : 'not authorized'}
+          </div>
           <button
             type="button"
             className="dash-sidebar-theme-toggle"
@@ -122,10 +120,6 @@ export function Sidebar({ activeTab, onSelect, isDark, onToggleTheme }: SidebarP
           >
             {isDark ? <SunIcon /> : <MoonIcon />}
           </button>
-          <div className="dash-sidebar-network">
-            <span className="dash-sidebar-network-dot" />
-            Base
-          </div>
         </div>
       </div>
     </aside>

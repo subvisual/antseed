@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
-import type { PaymentConfig } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import { formatUnits } from 'viem';
+import type { BalanceData, PaymentConfig } from '../types';
 import {
   getBuyerUsage,
-  getNetworkStats,
+  getEmissionsPending,
   type BuyerUsageChannelPoint,
   type BuyerUsageTotals,
-  type NetworkStatsResponse,
 } from '../api';
 import { UsageChart } from '../components/UsageChart';
 import { formatCompact, formatNumber, bigintFromString } from '../utils/format';
@@ -13,17 +13,34 @@ import './DashboardView.scss';
 
 interface DashboardViewProps {
   config: PaymentConfig | null;
+  balance: BalanceData | null;
+  onOpenDeposit: () => void;
+  onOpenWithdraw: () => void;
 }
 
 const EMPTY_CHANNELS: BuyerUsageChannelPoint[] = [];
+const ANTS_DECIMALS = 18;
 
-export function DashboardView({ config }: DashboardViewProps) {
-  const networkStatsUrl = config?.networkStatsUrl ?? null;
+function formatUsd(value: string | null | undefined): string {
+  const n = Number(value ?? 0);
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
+function safeWei(value: string): bigint {
+  try { return BigInt(value); } catch { return 0n; }
+}
+
+function formatAnts(value: bigint): string {
+  if (value === 0n) return '0';
+  const n = Number(formatUnits(value, ANTS_DECIMALS));
+  if (n > 0 && n < 0.0001) return '< 0.0001';
+  return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+export function DashboardView({ config, balance, onOpenDeposit, onOpenWithdraw }: DashboardViewProps) {
   const [buyerUsage, setBuyerUsage] = useState<BuyerUsageTotals | null>(null);
-  const [networkStats, setNetworkStats] = useState<NetworkStatsResponse | null>(null);
-  const [buyerUsageError, setBuyerUsageError] = useState<string | null>(null);
-  const [networkStatsError, setNetworkStatsError] = useState<string | null>(null);
+  const [buyerUsageError, setBuyerUsageError] = useState(false);
+  const [claimableAnts, setClaimableAnts] = useState<bigint>(0n);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,129 +48,126 @@ export function DashboardView({ config }: DashboardViewProps) {
       .then((totals) => {
         if (cancelled) return;
         setBuyerUsage(totals);
-        setBuyerUsageError(null);
+        setBuyerUsageError(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        setBuyerUsageError(err instanceof Error ? err.message : String(err));
+        setBuyerUsageError(true);
       });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (!networkStatsUrl) return;
+    if (!config?.evmAddress) {
+      setClaimableAnts(0n);
+      return;
+    }
     let cancelled = false;
-    getNetworkStats(networkStatsUrl)
-      .then((stats) => {
+    getEmissionsPending(config.evmAddress)
+      .then((pending) => {
         if (cancelled) return;
-        setNetworkStats(stats);
-        setNetworkStatsError(null);
+        const total = pending.rows.reduce((sum, row) => {
+          if (row.isCurrent) return sum;
+          return sum + safeWei(row.seller.amount) + safeWei(row.buyer.amount);
+        }, 0n);
+        setClaimableAnts(total);
       })
-      .catch((err) => {
-        if (cancelled) return;
-        setNetworkStatsError(err instanceof Error ? err.message : String(err));
+      .catch(() => {
+        if (!cancelled) setClaimableAnts(0n);
       });
     return () => { cancelled = true; };
-  }, [networkStatsUrl]);
+  }, [config?.evmAddress]);
 
-  const personalRequests = buyerUsage?.totalRequests ?? 0;
-  const personalTokens =
-    bigintFromString(buyerUsage?.totalInputTokens) +
-    bigintFromString(buyerUsage?.totalOutputTokens);
-  const personalSettlements = buyerUsage?.totalSettlements ?? 0;
-  const personalUniqueSellers = buyerUsage?.uniqueSellers ?? 0;
-
-  const networkRequests = bigintFromString(networkStats?.totals.totalRequests);
-  const networkTokens =
-    bigintFromString(networkStats?.totals.totalInputTokens) +
-    bigintFromString(networkStats?.totals.totalOutputTokens);
-  const networkSettlements = networkStats?.totals.totalSettlements ?? 0;
-  const networkPeers = networkStats?.totals.activePeers ?? 0;
-  const networkSellers = networkStats?.totals.sellerCount;
+  const total = Number(balance?.total ?? 0);
+  const available = formatUsd(balance?.available);
+  const reserved = formatUsd(balance?.reserved);
+  const personalTokens = useMemo(
+    () => bigintFromString(buyerUsage?.totalInputTokens) + bigintFromString(buyerUsage?.totalOutputTokens),
+    [buyerUsage?.totalInputTokens, buyerUsage?.totalOutputTokens],
+  );
+  const usageChannels = useMemo(
+    () => (buyerUsage?.channels ?? EMPTY_CHANNELS).filter((channel) => (channel.updatedAt || channel.reservedAt) > 1_000_000_000_000),
+    [buyerUsage?.channels],
+  );
 
   return (
-    <div className="dashboard-view">
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">Network</div>
-          <h2 className="dashboard-section-title">Global activity</h2>
-          <p className="dashboard-section-sub">
-            Aggregate stats across every seller on the AntSeed network.
-          </p>
-        </header>
+    <div className="portal-overview">
+      <section className="portal-section-head">
+        <h1>Overview</h1>
+        <p>Your AntSeed account at a glance</p>
+      </section>
 
-        <div className="stat-grid">
-          <div className="stat-card">
-            <div className="stat-card-label">Active peers</div>
-            <div className="stat-card-value">{formatNumber(networkPeers)}</div>
-            <div className="stat-card-hint">
-              {networkSellers != null
-                ? `${formatNumber(networkSellers)} sellers with lifetime activity`
-                : 'Sellers currently online with on-chain activity'}
-            </div>
+      {buyerUsageError && (
+        <div className="portal-inline-warning">
+          <span aria-hidden="true" />
+          Couldn&apos;t refresh — showing last known data
+        </div>
+      )}
+
+      <section className="overview-balance">
+        <div className="overview-balance-main">
+          <div className="portal-kicker">Available balance</div>
+          <div className="overview-balance-value">
+            ${formatUsd(balance?.total)}
+            <span>USDC</span>
           </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Network requests</div>
-            <div className="stat-card-value">{formatCompact(networkRequests)}</div>
-            <div className="stat-card-hint">Across all sellers</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Network settlements</div>
-            <div className="stat-card-value">{formatNumber(networkSettlements)}</div>
-            <div className="stat-card-hint">Total channels settled</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Network tokens</div>
-            <div className="stat-card-value">{formatCompact(networkTokens)}</div>
-            <div className="stat-card-hint">Input + output across all peers</div>
+          <p>
+            ${available} available · ${reserved} in {buyerUsage?.activeChannels ?? 0} active channels ·{' '}
+            <button type="button" onClick={onOpenWithdraw}>details</button>
+          </p>
+          <div className="overview-actions">
+            <button type="button" className="portal-primary-btn" onClick={onOpenDeposit}>+ Add funds</button>
+            <button type="button" className="portal-secondary-btn" onClick={onOpenWithdraw}>Withdraw</button>
           </div>
         </div>
 
-        {networkStatsError && (
-          <div className="dashboard-stats-error">
-            Couldn&apos;t load network stats: {networkStatsError}
+        <div className="overview-reward-card">
+          <div className="portal-kicker">Claimable rewards</div>
+          <div className="overview-reward-value">
+            <span className="overview-reward-line" />
+            {formatAnts(claimableAnts)} $ANTS
           </div>
-        )}
+          <p>emissions + DIEM</p>
+          <button type="button" className="portal-primary-btn" disabled={claimableAnts === 0n}>Claim all</button>
+        </div>
       </section>
 
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">Your activity</div>
-          <h2 className="dashboard-section-title">Your usage</h2>
-          <p className="dashboard-section-sub">
-            Requests and tokens flowing through your signer over time.
-          </p>
-        </header>
+      <section className="overview-stat-row" aria-label="Usage totals">
+        <div>
+          <div className="portal-kicker">Requests (all-time)</div>
+          <strong>{formatNumber(buyerUsage?.totalRequests ?? 0)}</strong>
+        </div>
+        <div>
+          <div className="portal-kicker">Tokens (all-time)</div>
+          <strong>{formatCompact(personalTokens)}</strong>
+        </div>
+        <div>
+          <div className="portal-kicker">Sellers used</div>
+          <strong>{formatNumber(buyerUsage?.uniqueSellers ?? 0)}</strong>
+        </div>
+        <div>
+          <div className="portal-kicker">Active channels</div>
+          <strong>{formatNumber(buyerUsage?.activeChannels ?? 0)}</strong>
+        </div>
+      </section>
 
-        <div className="dashboard-chart-card">
-          <div className="dashboard-kpi-row">
-            <div className="dashboard-kpi">
-              <div className="dashboard-kpi-label">Requests</div>
-              <div className="dashboard-kpi-value">{formatNumber(personalRequests)}</div>
-            </div>
-            <div className="dashboard-kpi">
-              <div className="dashboard-kpi-label">Tokens</div>
-              <div className="dashboard-kpi-value">{formatCompact(personalTokens)}</div>
-            </div>
-            <div className="dashboard-kpi">
-              <div className="dashboard-kpi-label">Settlements</div>
-              <div className="dashboard-kpi-value">{formatNumber(personalSettlements)}</div>
-            </div>
-            <div className="dashboard-kpi">
-              <div className="dashboard-kpi-label">Sellers</div>
-              <div className="dashboard-kpi-value">{formatNumber(personalUniqueSellers)}</div>
-            </div>
-          </div>
-
-          <UsageChart channels={buyerUsage?.channels ?? EMPTY_CHANNELS} />
-          {buyerUsageError && (
-            <div className="dashboard-stats-error">
-              Couldn&apos;t load your usage: {buyerUsageError}
-            </div>
+      <section className="overview-lower-grid">
+        <div>
+          <div className="portal-kicker">Usage · last 14 days</div>
+          {total === 0 || usageChannels.length === 0 ? (
+            <div className="overview-empty-chart">No usage yet — start sending requests to see your activity here.</div>
+          ) : (
+            <UsageChart channels={usageChannels} />
           )}
         </div>
+        <div className="overview-recent">
+          <div className="overview-recent-head">
+            <div className="portal-kicker">Recent activity</div>
+            <button type="button">View all →</button>
+          </div>
+          <p>No activity yet.</p>
+        </div>
       </section>
-
     </div>
   );
 }

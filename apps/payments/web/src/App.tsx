@@ -11,21 +11,23 @@ import { DepositView } from './components/DepositView';
 import { WithdrawView } from './components/WithdrawView';
 import { DashboardView } from './views/DashboardView';
 import { EmissionsView } from './views/EmissionsView';
-import { DiemRewardsView } from './views/DiemRewardsView';
 import { ChannelsView } from './components/ChannelsView';
+import { SettingsView } from './views/SettingsView';
 import { AuthorizedWalletProvider } from './context/AuthorizedWalletContext';
 import { AuthorizeWalletAlert } from './layout/AuthorizeWalletAlert';
 
 export type OverlayPhase = 'deposit' | 'success' | null;
 
-const VALID_TABS = new Set<TabId>(['dashboard', 'channels', 'emissions', 'diem-rewards']);
+const VALID_TABS = new Set<TabId>(['overview', 'rewards', 'activity', 'settings']);
 
 function parseTabFromUrl(): TabId {
   const raw = new URLSearchParams(window.location.search).get('tab');
-  if (!raw) return 'dashboard';
+  if (!raw) return 'overview';
   // Legacy compat: the old deposits tab no longer exists; fall through to dashboard.
-  if (raw === 'deposit' || raw === 'deposits') return 'dashboard';
-  return VALID_TABS.has(raw as TabId) ? (raw as TabId) : 'dashboard';
+  if (raw === 'deposit' || raw === 'deposits' || raw === 'dashboard') return 'overview';
+  if (raw === 'channels') return 'activity';
+  if (raw === 'emissions' || raw === 'diem-rewards') return 'rewards';
+  return VALID_TABS.has(raw as TabId) ? (raw as TabId) : 'overview';
 }
 
 function shouldOpenDepositFromUrl(): boolean {
@@ -218,6 +220,7 @@ function AppShell({
           onSelect={onSelectTab}
           isDark={isDark}
           onToggleTheme={onToggleTheme}
+          buyerAddress={buyerEvmAddress}
         />
         <div className="dash-main">
           <TopBar
@@ -228,10 +231,24 @@ function AppShell({
           />
           <AuthorizeWalletAlert />
           <main className="dash-content">
-            {activeTab === 'dashboard' && <DashboardView config={config} />}
-            {activeTab === 'channels'  && <ChannelsView  config={config} />}
-            {activeTab === 'emissions' && <EmissionsView config={config} />}
-            {activeTab === 'diem-rewards' && <DiemRewardsView config={config} />}
+            {activeTab === 'overview' && (
+              <DashboardView
+                config={config}
+                balance={balance}
+                onOpenDeposit={onOpenDeposit}
+                onOpenWithdraw={onOpenWithdraw}
+              />
+            )}
+            {activeTab === 'rewards' && <EmissionsView config={config} />}
+            {activeTab === 'activity' && <ChannelsView config={config} />}
+            {activeTab === 'settings' && (
+              <SettingsView
+                config={config}
+                balance={balance}
+                isDark={isDark}
+                onToggleTheme={onToggleTheme}
+              />
+            )}
           </main>
         </div>
         <WalletDrawer

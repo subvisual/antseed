@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi';
-import { parseAbi, formatUnits } from 'viem';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
+import { formatUnits, parseAbi } from 'viem';
 import type { PaymentConfig } from '../types';
 import {
   getEmissionsInfo,
@@ -10,12 +11,11 @@ import {
   type EmissionsEpochInfo,
   type EmissionsEpochParams,
   type EmissionsPendingResponse,
-  type EmissionsShares as SharesType,
+  type EmissionsShares,
 } from '../api';
 import { EMISSIONS_CLAIM_ABI } from '../emissions-abi';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
-import { Button } from '../components/Button';
 
 interface EmissionsViewProps {
   config: PaymentConfig | null;
@@ -23,28 +23,21 @@ interface EmissionsViewProps {
 
 const ANTS_DECIMALS = 18;
 
-function safeBigint(s: string): bigint {
-  try { return BigInt(s); } catch { return 0n; }
+function safeBigint(value: string): bigint {
+  try { return BigInt(value); } catch { return 0n; }
 }
 
-function addWei(a: string, b: string): string {
-  try { return (BigInt(a) + BigInt(b)).toString(); } catch { return '0'; }
-}
-
-function formatAnts(amountWei: string): string {
-  try {
-    const n = parseFloat(formatUnits(BigInt(amountWei), ANTS_DECIMALS));
-    if (n === 0) return '0';
-    if (n < 0.0001) return '< 0.0001';
-    return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  } catch {
-    return '0';
-  }
+function formatAnts(amountWei: string | bigint): string {
+  const amount = typeof amountWei === 'bigint' ? amountWei : safeBigint(amountWei);
+  if (amount === 0n) return '0';
+  const n = Number(formatUnits(amount, ANTS_DECIMALS));
+  if (n > 0 && n < 0.0001) return '< 0.0001';
+  return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
 function getEffectiveParams(
   row: EmissionsPendingResponse['rows'][number] | undefined,
-  fallback: SharesType | null | undefined,
+  fallback: EmissionsShares | null,
 ): EmissionsEpochParams | null {
   if (row?.params?.initialized) return row.params;
   return fallback ?? row?.params ?? null;
@@ -54,14 +47,13 @@ function estimateSideReward(
   epochEmission: string,
   sharePct: number,
   maxSharePct: number,
-  userPts: string,
-  totalPts: string,
+  userPoints: string,
+  totalPoints: string,
 ): bigint {
   const emission = safeBigint(epochEmission);
-  const user = safeBigint(userPts);
-  const total = safeBigint(totalPts);
-  if (emission === 0n || total === 0n || user === 0n) return 0n;
-
+  const user = safeBigint(userPoints);
+  const total = safeBigint(totalPoints);
+  if (emission === 0n || user === 0n || total === 0n) return 0n;
   const bucket = emission * BigInt(Math.round(sharePct * 100)) / 10000n;
   const reward = bucket * user / total;
   const maxReward = bucket * BigInt(Math.round(maxSharePct * 100)) / 10000n;
@@ -70,62 +62,35 @@ function estimateSideReward(
 
 function estimateRowReward(
   row: EmissionsPendingResponse['rows'][number],
-  fallback: SharesType | null | undefined,
-): string {
-  const params = getEffectiveParams(row, fallback);
-  if (!params) return '0';
-
-  const sellerReward = estimateSideReward(
-    row.epochEmission,
-    params.sellerSharePct,
-    params.maxSellerSharePct,
-    row.seller.userPoints,
-    row.seller.totalPoints,
+  shares: EmissionsShares | null,
+): bigint {
+  const params = getEffectiveParams(row, shares);
+  if (!params) return 0n;
+  return (
+    estimateSideReward(row.epochEmission, params.sellerSharePct, params.maxSellerSharePct, row.seller.userPoints, row.seller.totalPoints) +
+    estimateSideReward(row.epochEmission, params.buyerSharePct, params.maxBuyerSharePct, row.buyer.userPoints, row.buyer.totalPoints)
   );
-  const buyerReward = estimateSideReward(
-    row.epochEmission,
-    params.buyerSharePct,
-    params.maxBuyerSharePct,
-    row.buyer.userPoints,
-    row.buyer.totalPoints,
-  );
-  return (sellerReward + buyerReward).toString();
-}
-
-function computeEpochShare(
-  row: EmissionsPendingResponse['rows'][number] | undefined,
-  fallback: SharesType | null | undefined,
-): number {
-  if (!row) return 0;
-  const emission = safeBigint(row.epochEmission);
-  if (emission === 0n) return 0;
-
-  const reward = safeBigint(estimateRowReward(row, fallback));
-  return Number((reward * 10000n) / emission) / 100;
 }
 
 function formatTimeRemaining(seconds: number): string {
-  if (seconds <= 0) return 'ending now';
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  if (seconds <= 0) return 'closes now';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  if (days > 0) return `closes in ${days}d ${hours}h`;
+  return `closes in ${hours}h`;
 }
 
 export function EmissionsView({ config }: EmissionsViewProps) {
   const [info, setInfo] = useState<EmissionsEpochInfo | null>(null);
   const [pending, setPending] = useState<EmissionsPendingResponse | null>(null);
-  const [shares, setShares] = useState<SharesType | null>(null);
+  const [shares, setShares] = useState<EmissionsShares | null>(null);
   const [transfersEnabled, setTransfersEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
+  const [claimError, setClaimError] = useState<string | null>(null);
   const buyerAddress = config?.evmAddress ?? null;
   const { expectedChainId, ensureCorrectNetwork } = usePaymentNetwork(config);
   const { requireAuthorization } = useAuthorizedWallet();
-  const { connector } = useAccount();
 
   const load = useCallback(async () => {
     if (!buyerAddress) {
@@ -135,7 +100,7 @@ export function EmissionsView({ config }: EmissionsViewProps) {
     setLoading(true);
     setLoadError(null);
     try {
-      const [infoRes, pendingRes, sharesRes, teRes] = await Promise.all([
+      const [infoRes, pendingRes, sharesRes, transferRes] = await Promise.all([
         getEmissionsInfo().catch(() => null),
         getEmissionsPending(buyerAddress).catch(() => null),
         getEmissionsShares().catch(() => null),
@@ -144,8 +109,8 @@ export function EmissionsView({ config }: EmissionsViewProps) {
       setInfo(infoRes);
       setPending(pendingRes);
       setShares(sharesRes);
-      setTransfersEnabled(teRes.enabled);
-      if (!infoRes) setLoadError('Emissions not available on this chain');
+      setTransfersEnabled(transferRes.enabled);
+      if (!infoRes) setLoadError('Emissions are not available on this chain.');
     } finally {
       setLoading(false);
     }
@@ -153,7 +118,6 @@ export function EmissionsView({ config }: EmissionsViewProps) {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Seller claim — wagmi write
   const {
     writeContract: writeSellerClaim,
     data: sellerClaimTx,
@@ -163,41 +127,7 @@ export function EmissionsView({ config }: EmissionsViewProps) {
     hash: sellerClaimTx,
     chainId: expectedChainId,
   });
-  const [sellerClaimError, setSellerClaimError] = useState<string | null>(null);
 
-  const handleClaimSeller = useCallback(() => {
-    if (!config?.emissionsContractAddress || !pending) return;
-    const epochs = pending.rows
-      .filter((r) => !r.isCurrent && !r.seller.claimed && r.seller.amount !== '0')
-      .map((r) => BigInt(r.epoch));
-    if (epochs.length === 0) return;
-    requireAuthorization(async () => {
-      setSellerClaimError(null);
-      try {
-        await ensureCorrectNetwork();
-        writeSellerClaim({
-          address: config.emissionsContractAddress as `0x${string}`,
-          abi: parseAbi(EMISSIONS_CLAIM_ABI),
-          functionName: 'claimSellerEmissions',
-          chainId: expectedChainId,
-          args: [epochs],
-        }, {
-          onError: (err) => setSellerClaimError(getErrorMessage(err)),
-        });
-      } catch (err) {
-        setSellerClaimError(getErrorMessage(err));
-      }
-    });
-  }, [config, pending, ensureCorrectNetwork, expectedChainId, writeSellerClaim, requireAuthorization]);
-
-  useEffect(() => {
-    if (sellerClaimConfirmed) {
-      resetSellerClaim();
-      void load();
-    }
-  }, [sellerClaimConfirmed, resetSellerClaim, load]);
-
-  // Buyer claim — wagmi write
   const {
     writeContract: writeBuyerClaim,
     data: buyerClaimTx,
@@ -207,321 +137,168 @@ export function EmissionsView({ config }: EmissionsViewProps) {
     hash: buyerClaimTx,
     chainId: expectedChainId,
   });
-  const [buyerClaimError, setBuyerClaimError] = useState<string | null>(null);
-
-  const handleClaimBuyer = useCallback(() => {
-    if (!config?.emissionsContractAddress || !pending || !buyerAddress) return;
-    const epochs = pending.rows
-      .filter((r) => !r.isCurrent && !r.buyer.claimed && r.buyer.amount !== '0')
-      .map((r) => BigInt(r.epoch));
-    if (epochs.length === 0) return;
-    requireAuthorization(async () => {
-      setBuyerClaimError(null);
-      try {
-        await ensureCorrectNetwork();
-        writeBuyerClaim({
-          address: config.emissionsContractAddress as `0x${string}`,
-          abi: parseAbi(EMISSIONS_CLAIM_ABI),
-          functionName: 'claimBuyerEmissions',
-          chainId: expectedChainId,
-          args: [buyerAddress as `0x${string}`, epochs],
-        }, {
-          onError: (err) => setBuyerClaimError(getErrorMessage(err)),
-        });
-      } catch (err) {
-        setBuyerClaimError(getErrorMessage(err));
-      }
-    });
-  }, [config, pending, buyerAddress, ensureCorrectNetwork, expectedChainId, writeBuyerClaim, requireAuthorization]);
 
   useEffect(() => {
-    if (buyerClaimConfirmed) {
+    if (sellerClaimConfirmed || buyerClaimConfirmed) {
+      resetSellerClaim();
       resetBuyerClaim();
       void load();
     }
-  }, [buyerClaimConfirmed, resetBuyerClaim, load]);
+  }, [sellerClaimConfirmed, buyerClaimConfirmed, resetSellerClaim, resetBuyerClaim, load]);
+
+  const claimable = useMemo(() => {
+    let total = 0n;
+    for (const row of pending?.rows ?? []) {
+      if (row.isCurrent) continue;
+      if (!row.seller.claimed) total += safeBigint(row.seller.amount);
+      if (!row.buyer.claimed) total += safeBigint(row.buyer.amount);
+    }
+    return total;
+  }, [pending?.rows]);
+
+  const totalEarned = useMemo(() => (
+    (pending?.rows ?? []).reduce((sum, row) => sum + (row.isCurrent ? estimateRowReward(row, shares) : safeBigint(row.seller.amount) + safeBigint(row.buyer.amount)), 0n)
+  ), [pending?.rows, shares]);
+
+  const currentRow = pending?.rows.find((row) => row.isCurrent);
+  const currentShare = currentRow ? estimateRowReward(currentRow, shares) : 0n;
+  const rows = pending?.rows ?? [];
+  const now = Math.floor(Date.now() / 1000);
+  const epochEnd = info ? info.genesis + (info.currentEpoch + 1) * info.epochDuration : now;
+
+  const handleClaimAll = useCallback(() => {
+    if (!config?.emissionsContractAddress || !pending || !buyerAddress) return;
+    const sellerEpochs = pending.rows
+      .filter((row) => !row.isCurrent && !row.seller.claimed && row.seller.amount !== '0')
+      .map((row) => BigInt(row.epoch));
+    const buyerEpochs = pending.rows
+      .filter((row) => !row.isCurrent && !row.buyer.claimed && row.buyer.amount !== '0')
+      .map((row) => BigInt(row.epoch));
+    if (sellerEpochs.length === 0 && buyerEpochs.length === 0) return;
+
+    requireAuthorization(async () => {
+      setClaimError(null);
+      try {
+        await ensureCorrectNetwork();
+        if (sellerEpochs.length > 0) {
+          writeSellerClaim({
+            address: config.emissionsContractAddress as `0x${string}`,
+            abi: parseAbi(EMISSIONS_CLAIM_ABI),
+            functionName: 'claimSellerEmissions',
+            chainId: expectedChainId,
+            args: [sellerEpochs],
+          }, { onError: (err) => setClaimError(getErrorMessage(err)) });
+        }
+        if (buyerEpochs.length > 0) {
+          writeBuyerClaim({
+            address: config.emissionsContractAddress as `0x${string}`,
+            abi: parseAbi(EMISSIONS_CLAIM_ABI),
+            functionName: 'claimBuyerEmissions',
+            chainId: expectedChainId,
+            args: [buyerAddress as `0x${string}`, buyerEpochs],
+          }, { onError: (err) => setClaimError(getErrorMessage(err)) });
+        }
+      } catch (err) {
+        setClaimError(getErrorMessage(err));
+      }
+    });
+  }, [buyerAddress, config?.emissionsContractAddress, ensureCorrectNetwork, expectedChainId, pending, requireAuthorization, writeBuyerClaim, writeSellerClaim]);
 
   if (loading && !info) {
-    return (
-      <div className="emissions-view">
-        <div className="overview-empty">
-          <div className="overview-empty-desc">Loading…</div>
-        </div>
-      </div>
-    );
+    return <div className="rewards-view"><div className="overview-empty-desc">Loading rewards…</div></div>;
   }
 
   if (loadError || !info) {
     return (
-      <div className="emissions-view">
+      <div className="rewards-view">
+        <section className="portal-section-head">
+          <h1>Rewards</h1>
+          <p>$ANTS earned from network usage and DIEM staking</p>
+        </section>
         <div className="overview-empty">
-          <div className="overview-empty-title">Emissions not available</div>
-          <div className="overview-empty-desc">
-            {loadError ?? 'The Emissions contract is not configured for this chain.'}
-          </div>
+          <div className="overview-empty-title">Rewards unavailable</div>
+          <div className="overview-empty-desc">{loadError ?? 'The emissions contract is not configured for this chain.'}</div>
         </div>
       </div>
     );
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const epochStart = info.genesis + info.currentEpoch * info.epochDuration;
-  const epochEnd = epochStart + info.epochDuration;
-  const timeRemaining = epochEnd - now;
-  const epochsUntilHalving = info.halvingInterval - (info.currentEpoch % info.halvingInterval);
-
-  const rows = pending?.rows ?? [];
-  const currentRow = rows.find((r) => r.isCurrent);
-  const currentParams = getEffectiveParams(currentRow, shares);
-  const currentEstimate = currentRow ? estimateRowReward(currentRow, shares) : '0';
-  const epochSharePct = computeEpochShare(currentRow, shares);
-
-  let totalClaimable = 0n;
-  let totalClaimed = 0n;
-  for (const r of rows) {
-    if (r.isCurrent) continue;
-    const params = getEffectiveParams(r, shares);
-    // Per-side: pendingEmissions returns 0 for claimed sides, so estimate from points.
-    // Use the epoch's snapshotted params so historical rows don't change when
-    // owner-controlled global shares are updated for future epochs.
-    if (r.seller.claimed && params) {
-      totalClaimed += estimateSideReward(
-        r.epochEmission,
-        params.sellerSharePct,
-        params.maxSellerSharePct,
-        r.seller.userPoints,
-        r.seller.totalPoints,
-      );
-    } else {
-      totalClaimable += safeBigint(r.seller.amount);
-    }
-    if (r.buyer.claimed && params) {
-      totalClaimed += estimateSideReward(
-        r.epochEmission,
-        params.buyerSharePct,
-        params.maxBuyerSharePct,
-        r.buyer.userPoints,
-        r.buyer.totalPoints,
-      );
-    } else {
-      totalClaimable += safeBigint(r.buyer.amount);
-    }
-  }
-
   return (
-    <div className="emissions-view">
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">Current epoch</div>
-          <h2 className="dashboard-section-title">Epoch #{info.currentEpoch}</h2>
-          {currentParams && (
-            <p className="dashboard-section-sub">
-              Split: {currentParams.sellerSharePct}% sellers · {currentParams.buyerSharePct}% buyers ·{' '}
-              {currentParams.reserveSharePct}% reserve · {currentParams.teamSharePct}% team
-            </p>
-          )}
-        </header>
+    <div className="rewards-view">
+      <section className="portal-section-head">
+        <h1>Rewards</h1>
+        <p>$ANTS earned from network usage and DIEM staking</p>
+      </section>
 
-        <div className="stat-grid">
-          <div className="stat-card">
-            <div className="stat-card-label">Ends in</div>
-            <div className="stat-card-value">{formatTimeRemaining(timeRemaining)}</div>
+      <section className="rewards-claim-row">
+        <div>
+          <div className="portal-kicker">Claimable now</div>
+          <div className="rewards-claim-value">
+            {formatAnts(claimable)}
+            <span>$ANTS</span>
           </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Epoch pool</div>
-            <div className="stat-card-value">{formatAnts(info.epochEmission)}</div>
-            <div className="stat-card-hint">ANTS this epoch</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Epoch duration</div>
-            <div className="stat-card-value">{Math.round(info.epochDuration / 86400)}d</div>
-            <div className="stat-card-hint">{(info.epochDuration / 3600).toFixed(0)} hours</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Next halving</div>
-            <div className="stat-card-value">{epochsUntilHalving}</div>
-            <div className="stat-card-hint">Epochs remaining</div>
-          </div>
+          <p>{rows.length} emissions</p>
+        </div>
+        <button type="button" className="portal-primary-btn" disabled={claimable === 0n} onClick={handleClaimAll}>Claim all</button>
+      </section>
+
+      <section className="rewards-growth">
+        <div className="rewards-growth-head">
+          <div className="portal-kicker">Reward growth · per epoch</div>
+          <p>Total earned to date <strong>{formatAnts(totalEarned)} $ANTS</strong></p>
+        </div>
+        <div className="rewards-bars" aria-hidden="true">
+          {rows.filter((row) => !row.isCurrent).slice(-3).map((row, index) => (
+            <span key={row.epoch} style={{ flexGrow: index + 1 }} />
+          ))}
+          <span className="rewards-bars-current" />
         </div>
       </section>
 
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">Your position</div>
-          <h2 className="dashboard-section-title">This epoch</h2>
-          <p className="dashboard-section-sub">
-            Your share of this epoch's rewards. Updates after each on-chain settlement.
-          </p>
-        </header>
-
-        <div className="stat-grid">
-          <div className="stat-card stat-card--accent">
-            <div className="stat-card-label">Estimated reward</div>
-            <div className="stat-card-value">{formatAnts(currentEstimate)}</div>
-            <div className="stat-card-hint">ANTS (not yet final)</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Your epoch share</div>
-            <div className="stat-card-value">{epochSharePct > 0 ? `${epochSharePct.toFixed(2)}%` : '—'}</div>
-            <div className="stat-card-hint">Of total epoch emission</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Claimable</div>
-            <div className="stat-card-value">{formatAnts(totalClaimable.toString())}</div>
-            <div className="stat-card-hint">From past epochs</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card-label">Already claimed</div>
-            <div className="stat-card-value">{formatAnts(totalClaimed.toString())}</div>
-            <div className="stat-card-hint">ANTS total</div>
-          </div>
+      <section className="rewards-epoch-row">
+        <div>
+          <div className="portal-kicker">Current epoch</div>
+          <strong>#{info.currentEpoch}</strong>
+          <p>{formatTimeRemaining(epochEnd - now)}</p>
+        </div>
+        <div>
+          <div className="portal-kicker">Earned so far</div>
+          <strong>~{formatAnts(currentShare)} $ANTS</strong>
+        </div>
+        <div>
+          <div className="portal-kicker">Your share</div>
+          <strong>{currentShare > 0n ? 'active' : '—'}</strong>
+          <p>of pool</p>
         </div>
       </section>
 
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">History</div>
-          <h2 className="dashboard-section-title">Your emissions</h2>
-          <p className="dashboard-section-sub">
-            Current epoch is an estimate that updates after each on-chain settlement.
-          </p>
-        </header>
-        <div className="dashboard-chart-card">
-          <EmissionsTable rows={pending?.rows ?? []} shares={shares} />
-          {(sellerClaimError || buyerClaimError) && (
-            <div className="status-msg status-error">{sellerClaimError || buyerClaimError}</div>
-          )}
-          <div className="emissions-claim-actions">
-            <Button
-              fullWidth
-              onClick={handleClaimSeller}
-              disabled={!pending || pending.rows.every((r) => r.isCurrent || r.seller.claimed || r.seller.amount === '0')}
-            >
-              Claim seller
-            </Button>
-            <Button
-              fullWidth
-              onClick={handleClaimBuyer}
-              disabled={!pending || pending.rows.every((r) => r.isCurrent || r.buyer.claimed || r.buyer.amount === '0')}
-            >
-              Claim buyer
-            </Button>
-          </div>
-        </div>
+      <section className="rewards-history">
+        <div className="portal-kicker">Epoch history</div>
+        {rows.filter((row) => !row.isCurrent).length === 0 ? (
+          <p>No closed epochs yet.</p>
+        ) : (
+          rows.filter((row) => !row.isCurrent).slice().reverse().map((row) => (
+            <div className="rewards-history-row" key={row.epoch}>
+              <span>Epoch {row.epoch}</span>
+              <strong>{formatAnts(safeBigint(row.seller.amount) + safeBigint(row.buyer.amount))} $ANTS</strong>
+            </div>
+          ))
+        )}
       </section>
 
-      <section className="dashboard-section">
-        <header className="dashboard-section-head">
-          <div className="dashboard-section-eyebrow">Info</div>
-          <h2 className="dashboard-section-title">About $ANTS</h2>
-        </header>
-        <div className="dashboard-chart-card">
-          <div className="emissions-ants-info">
-            <p>
-              $ANTS is the native token of the AntSeed network. It is minted
-              each epoch to active sellers and buyers in proportion to their
-              on-chain activity. There is no pre-mining — you earn
-              simply by using the network.
-            </p>
-            <p>
-              Claims are non-custodial: seller claims mint to the claiming wallet,
-              and buyer claims mint to the wallet you've authorized for your
-              buyer identity.
-            </p>
-          </div>
-          {config?.antsTokenAddress && connector && (
-            <Button
-              fullWidth
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const provider = await connector.getProvider();
-                  await (provider as { request: (args: unknown) => Promise<unknown> }).request({
-                    method: 'wallet_watchAsset',
-                    params: {
-                      type: 'ERC20',
-                      options: {
-                        address: config.antsTokenAddress,
-                        symbol: 'ANTS',
-                        decimals: 18,
-                      },
-                    },
-                  });
-                } catch {
-                  // user rejected or wallet doesn't support watchAsset
-                }
-              }}
-            >
-              Add ANTS to wallet
-            </Button>
-          )}
-        </div>
+      <section className="rewards-diem">
+        <div className="portal-kicker">DIEM staking</div>
+        <p>Connect the wallet you used on the DIEM staking portal to view and claim $ANTS.</p>
+        <ConnectButton />
       </section>
 
+      {claimError && <div className="status-msg status-error">{claimError}</div>}
       {transfersEnabled === false && (
-        <div className="emissions-banner emissions-banner--warn">
-          <strong>ANTS is not yet transferable.</strong>
-          Claimed tokens remain in your wallet until governance enables transfers.
+        <div className="portal-inline-warning">
+          <span aria-hidden="true" />
+          ANTS transfers are not enabled yet. Claimed tokens remain in your wallet until governance enables transfers.
         </div>
       )}
-    </div>
-  );
-}
-
-function EmissionsTable({ rows, shares }: {
-  rows: EmissionsPendingResponse['rows'];
-  shares?: SharesType | null;
-}) {
-  if (rows.length === 0) {
-    return <div className="overview-empty-desc">No recent epochs to show.</div>;
-  }
-  return (
-    <div className="emissions-table-wrap">
-      <table className="emissions-table">
-        <thead>
-          <tr>
-            <th>Epoch</th>
-            <th>Reward</th>
-            <th>Your share</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice().reverse().map((row) => {
-            const total = row.isCurrent || row.seller.claimed || row.buyer.claimed
-              ? estimateRowReward(row, shares)
-              : addWei(row.seller.amount, row.buyer.amount);
-            const share = computeEpochShare(row, shares);
-            // "Fully resolved" = each side is either claimed or has no points
-            const sellerDone = row.seller.claimed || row.seller.userPoints === '0';
-            const buyerDone = row.buyer.claimed || row.buyer.userPoints === '0';
-            const fullyClaimed = !row.isCurrent && sellerDone && buyerDone && (row.seller.claimed || row.buyer.claimed);
-            const nothingToClaim = total === '0';
-            const statusLabel = fullyClaimed
-              ? 'Claimed'
-              : row.isCurrent
-                ? 'Estimate'
-                : nothingToClaim
-                  ? '—'
-                  : 'Claimable';
-            const statusClass = fullyClaimed
-              ? 'emissions-status--claimed'
-              : row.isCurrent
-                ? 'emissions-status--estimate'
-                : nothingToClaim
-                  ? ''
-                  : 'emissions-status--pending';
-            return (
-              <tr key={row.epoch} className={row.isCurrent ? 'emissions-table-current' : ''}>
-                <td>#{row.epoch}</td>
-                <td>{formatAnts(total)} ANTS</td>
-                <td>{share > 0 ? `${share.toFixed(2)}%` : '—'}</td>
-                <td><span className={`emissions-status ${statusClass}`}>{statusLabel}</span></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
