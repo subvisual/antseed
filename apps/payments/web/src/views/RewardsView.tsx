@@ -814,7 +814,18 @@ export function RewardsView({ config }: RewardsViewProps) {
             <p className="rewards-diem-connect-desc">
               Connect the wallet you used on the DIEM staking portal to view and claim $ANTS.
             </p>
-            <ConnectButton />
+            <ConnectButton.Custom>
+              {({ openConnectModal, mounted }) => (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={openConnectModal}
+                  disabled={!mounted}
+                >
+                  Connect wallet
+                </button>
+              )}
+            </ConnectButton.Custom>
           </div>
         </>
       )}
