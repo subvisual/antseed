@@ -6,7 +6,7 @@ interface ActionModalProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
-  variant?: 'default' | 'deposit';
+  variant?: 'default' | 'deposit' | 'wide';
   children: ReactNode;
 }
 

@@ -135,6 +135,10 @@ function CryptoDeposit({
   const creditLimit = parseUsd(balance?.creditLimit);
   const balanceKnown = balance !== null;
   const remainingCreditLimit = balanceKnown ? Math.max(0, creditLimit - currentTotal) : 0;
+  // A credit limit of 0 means "not set" (the protocol always returns a positive
+  // limit on-chain). Only gate the deposit on it when it's a real positive cap —
+  // otherwise the wallet-balance check is the relevant constraint.
+  const hasCreditLimit = creditLimit > 0;
   const isFirstDeposit = currentTotal === 0;
   const minDeposit = isFirstDeposit ? MIN_FIRST_DEPOSIT : 0;
 
@@ -167,13 +171,10 @@ function CryptoDeposit({
     ? null
     : Number.parseFloat(formatUnits(walletUsdcRaw, 6));
   const walletUsdcKnown = walletUsdcBalance !== null && Number.isFinite(walletUsdcBalance);
-  const maxDeposit = Math.max(
-    0,
-    Math.min(
-      remainingCreditLimit,
-      walletUsdcKnown ? walletUsdcBalance : remainingCreditLimit,
-    ),
-  );
+  const effectiveRemainingLimit = hasCreditLimit ? remainingCreditLimit : Infinity;
+  const maxDeposit = walletUsdcKnown
+    ? Math.max(0, Math.min(walletUsdcBalance, effectiveRemainingLimit))
+    : (hasCreditLimit ? Math.max(0, remainingCreditLimit) : 0);
 
   // Default amount once data loads
   useEffect(() => {
@@ -199,12 +200,14 @@ function CryptoDeposit({
       validationError = `Minimum first deposit is $${minDeposit} USDC.`;
     } else if (!walletUsdcKnown) {
       validationError = 'Loading your connected wallet USDC balance…';
-    } else if (amountNum > remainingCreditLimit) {
+    } else if (amountNum > walletUsdcBalance) {
+      validationError = walletUsdcBalance <= 0
+        ? 'Your connected wallet has no USDC. Add USDC to it, then deposit.'
+        : `Your wallet only has $${formatUsd(walletUsdcBalance)} USDC available.`;
+    } else if (hasCreditLimit && amountNum > remainingCreditLimit) {
       validationError = remainingCreditLimit <= 0
-        ? 'You have reached your credit limit.'
-        : `You can add up to $${formatUsd(remainingCreditLimit)} more.`;
-    } else if (walletUsdcKnown && amountNum > walletUsdcBalance) {
-      validationError = `Your wallet only has $${formatUsd(walletUsdcBalance)} USDC available.`;
+        ? 'You have reached your deposit credit limit. Withdraw or spend before adding more.'
+        : `You can add up to $${formatUsd(remainingCreditLimit)} more right now.`;
     }
   }
   const isValidAmount = amount !== '' && !validationError && amountNum > 0;

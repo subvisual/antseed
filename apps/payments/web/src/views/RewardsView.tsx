@@ -632,8 +632,7 @@ export function RewardsView({ config }: RewardsViewProps) {
   if (!isLoading && emissionsError && !emissionsInfo) {
     return (
       <div className="rewards-view">
-        <div className="page-h1">Rewards</div>
-        <div className="page-subtitle">$ANTS earned from network usage and DIEM staking</div>
+        {/* Page title/subtitle live in the sticky TopBar (layout/TopBar.tsx). */}
         <div className="rewards-empty">
           <div className="rewards-empty-title">Rewards not available</div>
           <div className="rewards-empty-desc">
@@ -675,8 +674,7 @@ export function RewardsView({ config }: RewardsViewProps) {
 
   return (
     <div className="rewards-view">
-      <div className="page-h1">Rewards</div>
-      <div className="page-subtitle">$ANTS earned from network usage and DIEM staking</div>
+      {/* Page title/subtitle live in the sticky TopBar (layout/TopBar.tsx). */}
 
       {/* ── Hero: claimable total + Claim all button ── */}
       <div className="rewards-hero">

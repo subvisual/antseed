@@ -11,6 +11,7 @@ import {
   SkeletonChart,
 } from '../components/Skeleton';
 import { StaleDataBanner } from '../components/StaleDataBanner';
+import { GettingStarted } from '../components/GettingStarted';
 import { formatCompact, formatNumber, bigintFromString } from '../utils/format';
 import './OverviewView.scss';
 
@@ -22,6 +23,7 @@ interface OverviewViewProps {
   config: PaymentConfig | null;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
+  onOpenHowItWorks: () => void;
   onGoToChannels: () => void;
   onGoToActivity: () => void;
   onGoToRewards: () => void;
@@ -38,6 +40,7 @@ export function OverviewView({
   config: _config,
   onOpenDeposit,
   onOpenWithdraw,
+  onOpenHowItWorks,
   onGoToChannels,
   onGoToActivity,
 }: OverviewViewProps) {
@@ -94,9 +97,13 @@ export function OverviewView({
 
   return (
     <div className="overview-view">
-      {/* Page header */}
-      <div className="page-h1">Overview</div>
-      <div className="page-subtitle">Your AntSeed account at a glance</div>
+      {/* Page title/subtitle live in the sticky TopBar (layout/TopBar.tsx). */}
+
+      {/* Onboarding checklist — self-hides once dismissed / all steps done */}
+      <GettingStarted
+        onOpenDeposit={onOpenDeposit}
+        onOpenHowItWorks={onOpenHowItWorks}
+      />
 
       {/* Stale data notice */}
       <StaleDataBanner
