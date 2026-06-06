@@ -75,9 +75,7 @@ export function OverviewView({
   // ── Derived values ────────────────────────────────────────────────────────
   const available = balance?.available ?? null;
   const reserved  = balance?.reserved  ?? null;
-  const total     = balance?.total     ?? null;
 
-  const totalUsd     = total     ? parseFloat(total)     : null;
   const availableUsd = available ? parseFloat(available) : null;
   const reservedUsd  = reserved  ? parseFloat(reserved)  : null;
 
@@ -129,9 +127,9 @@ export function OverviewView({
             <>
               <div className="page-label">Available balance</div>
               <div className="overview-bal">
-                {totalUsd !== null ? (
+                {availableUsd !== null ? (
                   <>
-                    ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    ${availableUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                     <small>USDC</small>
                   </>
                 ) : (
@@ -139,10 +137,9 @@ export function OverviewView({
                 )}
               </div>
               <div className="overview-bal-note">
-                {availableUsd !== null && reservedUsd !== null ? (
+                {reservedUsd !== null && reservedUsd > 0 ? (
                   <>
-                    ${formatUsd(available)} available · ${formatUsd(reserved)} in{' '}
-                    {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
+                    ${formatUsd(reserved)} reserved in {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
                     ·{' '}
                   </>
                 ) : null}
