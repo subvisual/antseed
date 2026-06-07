@@ -4,7 +4,6 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import type { BalanceData, PaymentConfig } from '../types';
 import { useSetOperator, useTransferOperator } from '../hooks/useSetOperator';
 import { useAuthorizedWallet } from '../context/AuthorizedWalletContext';
-import { Button } from '../components/Button';
 import { InfoHint } from '../components/InfoHint';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -14,8 +13,6 @@ interface WalletDrawerProps {
   balance: BalanceData | null;
   config: PaymentConfig | null;
   buyerEvmAddress: string | null;
-  onOpenDeposit: () => void;
-  onOpenWithdraw: () => void;
 }
 
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
@@ -73,8 +70,6 @@ export function WalletDrawer({
   balance,
   config,
   buyerEvmAddress,
-  onOpenDeposit,
-  onOpenWithdraw,
 }: WalletDrawerProps) {
   const { address: connectedAddress, isConnected, connector } = useAccount();
   const { disconnect } = useDisconnect();
@@ -120,14 +115,6 @@ export function WalletDrawer({
   const available = balance ? parseFloat(balance.available) : 0;
   const reserved = balance ? parseFloat(balance.reserved) : 0;
   const total = balance ? parseFloat(balance.total) : 0;
-
-  function handleDepositMore() {
-    onOpenDeposit();
-  }
-
-  function handleWithdraw() {
-    onOpenWithdraw();
-  }
 
   return (
     <>
@@ -207,14 +194,6 @@ export function WalletDrawer({
               </div>
             </div>
 
-            <div className="wallet-drawer-actions">
-              <Button variant="primary" onClick={handleDepositMore}>
-                Deposit more
-              </Button>
-              <Button variant="outline" onClick={handleWithdraw}>
-                Withdraw
-              </Button>
-            </div>
           </section>
 
           {/* ── Your wallet ───────────────────────────────────── */}

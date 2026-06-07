@@ -9,6 +9,7 @@ import { LoaderOverlay } from './layout/LoaderOverlay';
 import { ActionModal } from './layout/ActionModal';
 import { DepositView } from './components/DepositView';
 import { WithdrawView } from './components/WithdrawView';
+import { HowItWorksModal } from './components/HowItWorksModal';
 import { OverviewView } from './views/OverviewView';
 import { RewardsView } from './views/RewardsView';
 import { ActivityView } from './views/ActivityView';
@@ -16,10 +17,12 @@ import { SettingsView } from './views/SettingsView';
 import { ChannelsStubView } from './views/ChannelsStubView';
 // EmissionsView and DiemRewardsView removed — merged into RewardsView
 import { AuthorizedWalletProvider } from './context/AuthorizedWalletContext';
-import { AuthorizeWalletAlert } from './layout/AuthorizeWalletAlert';
 import { useAuthorizedWallet } from './context/AuthorizedWalletContext';
 
-export type OverlayPhase = 'deposit' | 'success' | null;
+export type OverlayPhase = 'success' | null;
+
+// Shown once to brand-new users (no balance yet); dismissal persisted here.
+const HIW_SEEN_KEY = 'antseed-payments-hiw-seen';
 
 // New 4-item portal nav + legacy sub-pages for backwards compat
 const VALID_TABS = new Set<TabId>([
@@ -44,6 +47,15 @@ function shouldOpenDepositFromUrl(): boolean {
   return action === 'deposit' || tab === 'deposit' || tab === 'deposits';
 }
 
+/**
+ * `?welcome` (or `?welcome=1`) force-opens the "How AntSeed works" modal,
+ * regardless of balance or the one-time seen flag. Handy for previewing /
+ * deep-linking to the onboarding explainer in any browser.
+ */
+function shouldOpenWelcomeFromUrl(): boolean {
+  return new URLSearchParams(window.location.search).has('welcome');
+}
+
 function writeTabToUrl(tab: TabId) {
   const url = new URL(window.location.href);
   url.searchParams.set('tab', tab);
@@ -55,11 +67,6 @@ function clearDepositActionFromUrl() {
   if (url.searchParams.get('action') === 'deposit') url.searchParams.delete('action');
   if (url.searchParams.get('modal') === 'deposit')  url.searchParams.delete('modal');
   window.history.replaceState({}, '', url.toString());
-}
-
-function truncateAddress(addr: string): string {
-  if (!addr || addr.length < 10) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
 export function App() {
@@ -202,7 +209,7 @@ function AppShell({
   refreshBalance,
 }: AppShellProps) {
   const [justDeposited, setJustDeposited] = useState(false);
-  const [depositPromptDismissed, setDepositPromptDismissed] = useState(false);
+  const [howItWorksOpen, setHowItWorksOpen] = useState(shouldOpenWelcomeFromUrl);
   const authorizedWallet = useAuthorizedWallet();
 
   const isLoading = !balanceLoaded;
@@ -212,9 +219,19 @@ function AppShell({
     parseFloat(balance.total) === 0 &&
     parseFloat(balance.reserved) === 0;
 
-  let overlayPhase: OverlayPhase = null;
-  if (justDeposited) overlayPhase = 'success';
-  else if (isEmptyBuyer && !depositPromptDismissed) overlayPhase = 'deposit';
+  // First-run: greet brand-new users (no balance yet) with the "How AntSeed
+  // works" explainer, exactly once, then hand off to the Overview checklist.
+  // Dismissal is persisted, so it never nags.
+  useEffect(() => {
+    if (!isEmptyBuyer) return;
+    if (localStorage.getItem(HIW_SEEN_KEY) === '1') return;
+    localStorage.setItem(HIW_SEEN_KEY, '1');
+    setHowItWorksOpen(true);
+  }, [isEmptyBuyer]);
+
+  // The only blocking overlay is the post-deposit success celebration. First-run
+  // funding is handled inline by the Overview checklist (no separate overlay).
+  const overlayPhase: OverlayPhase = justDeposited ? 'success' : null;
 
   const shellBlurred = isLoading || overlayPhase !== null;
 
@@ -224,37 +241,33 @@ function AppShell({
     await refreshBalance();
   }, [refreshBalance, onCloseActionModal]);
 
-  const dismissSuccess       = useCallback(() => setJustDeposited(false), []);
-  const dismissDepositPrompt = useCallback(() => setDepositPromptDismissed(true), []);
+  const dismissSuccess = useCallback(() => setJustDeposited(false), []);
 
   // Navigate to channels sub-page
   const goToChannels = useCallback(() => onSelectTab('channels'), [onSelectTab]);
   const goToActivity = useCallback(() => onSelectTab('activity'), [onSelectTab]);
   const goToRewards  = useCallback(() => onSelectTab('rewards'),  [onSelectTab]);
 
-  const shortAddr = buyerEvmAddress ? truncateAddress(buyerEvmAddress) : null;
-  const isAuthorized = authorizedWallet.operatorSet === true;
+  // Safety state: the user has funds on-chain but no authorized recovery wallet.
+  // This is the only unrecoverable-funds risk, so it's surfaced on every tab via
+  // the account pill (and emphasized in the Overview checklist).
+  const fundedTotal = balance ? parseFloat(balance.total) : 0;
+  const unauthorizedAtRisk = authorizedWallet.operatorSet === false && fundedTotal > 0;
 
   return (
     <>
       <div className={`dash-shell${shellBlurred ? ' dash-shell--blurred' : ''}`}>
-        <Sidebar
-          activeTab={activeTab}
-          onSelect={onSelectTab}
-          isDark={isDark}
-          onToggleTheme={onToggleTheme}
-          walletAddress={shortAddr}
-          walletAuthorized={isAuthorized}
-          onOpenWallet={onOpenWalletDrawer}
-        />
+        <Sidebar activeTab={activeTab} onSelect={onSelectTab} />
         <div className="dash-main">
           <TopBar
             activeTab={activeTab}
             balance={balance}
+            buyerEvmAddress={buyerEvmAddress}
+            atRisk={unauthorizedAtRisk}
+            isDark={isDark}
+            onToggleTheme={onToggleTheme}
             onOpenWallet={onOpenWalletDrawer}
-            onOpenDeposit={onOpenDeposit}
           />
-          <AuthorizeWalletAlert />
           <main className="dash-content">
             {/* New 4-item portal nav */}
             {(activeTab === 'overview' || activeTab === 'dashboard') && (
@@ -263,6 +276,7 @@ function AppShell({
                 config={config}
                 onOpenDeposit={onOpenDeposit}
                 onOpenWithdraw={onOpenWithdraw}
+                onOpenHowItWorks={() => setHowItWorksOpen(true)}
                 onGoToChannels={goToChannels}
                 onGoToActivity={goToActivity}
                 onGoToRewards={goToRewards}
@@ -288,20 +302,10 @@ function AppShell({
           balance={balance}
           config={config}
           buyerEvmAddress={buyerEvmAddress}
-          onOpenDeposit={onOpenDeposit}
-          onOpenWithdraw={onOpenWithdraw}
         />
       </div>
       <LoaderOverlay isVisible={isLoading} />
-      <EmptyStateOverlay
-        phase={overlayPhase}
-        config={config}
-        balance={balance}
-        buyerAddress={buyerEvmAddress}
-        onDeposited={handleDeposited}
-        onContinue={dismissSuccess}
-        onDismissDeposit={dismissDepositPrompt}
-      />
+      <EmptyStateOverlay phase={overlayPhase} onContinue={dismissSuccess} />
       <ActionModal
         isOpen={actionModal === 'deposit'}
         onClose={onCloseActionModal}
@@ -324,6 +328,11 @@ function AppShell({
       >
         <WithdrawView config={config} balance={balance} onAction={refreshBalance} />
       </ActionModal>
+      <HowItWorksModal
+        isOpen={howItWorksOpen}
+        onClose={() => setHowItWorksOpen(false)}
+        onOpenDeposit={onOpenDeposit}
+      />
     </>
   );
 }

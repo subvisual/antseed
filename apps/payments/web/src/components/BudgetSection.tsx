@@ -123,15 +123,13 @@ function BudgetMeter({
                 <div className={meterClass} style={{ width: `${pct}%` }} />
               </div>
             </>
-          ) : (
-            <span className="budget-unset">No cap set</span>
-          )}
+          ) : null}
 
           {/* Cap input */}
-          <div className="budget-cap-row">
-            <span className="budget-cap-prefix">$</span>
+          <div className="budget-field">
+            <span className="budget-field-prefix">$</span>
             <input
-              className="set-input budget-cap-input"
+              className="budget-field-input"
               type="number"
               min="0"
               step="1"
@@ -143,7 +141,7 @@ function BudgetMeter({
             />
             <button
               type="button"
-              className="set-btn-ghost"
+              className="budget-field-btn"
               onClick={handleCapSave}
               disabled={!capDraft}
             >
@@ -244,10 +242,10 @@ function LowBalanceRow({
             </button>
           </div>
         )}
-        <div className="budget-cap-row">
-          <span className="budget-cap-prefix">$</span>
+        <div className="budget-field">
+          <span className="budget-field-prefix">$</span>
           <input
-            className="set-input budget-cap-input"
+            className="budget-field-input"
             type="number"
             min="0"
             step="1"
@@ -259,7 +257,7 @@ function LowBalanceRow({
           />
           <button
             type="button"
-            className="set-btn-ghost"
+            className="budget-field-btn"
             onClick={handleSave}
             disabled={!draft}
           >

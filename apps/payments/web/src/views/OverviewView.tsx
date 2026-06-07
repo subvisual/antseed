@@ -11,6 +11,7 @@ import {
   SkeletonChart,
 } from '../components/Skeleton';
 import { StaleDataBanner } from '../components/StaleDataBanner';
+import { GettingStarted } from '../components/GettingStarted';
 import { formatCompact, formatNumber, bigintFromString } from '../utils/format';
 import './OverviewView.scss';
 
@@ -22,6 +23,7 @@ interface OverviewViewProps {
   config: PaymentConfig | null;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
+  onOpenHowItWorks: () => void;
   onGoToChannels: () => void;
   onGoToActivity: () => void;
   onGoToRewards: () => void;
@@ -38,6 +40,7 @@ export function OverviewView({
   config: _config,
   onOpenDeposit,
   onOpenWithdraw,
+  onOpenHowItWorks,
   onGoToChannels,
   onGoToActivity,
 }: OverviewViewProps) {
@@ -72,9 +75,7 @@ export function OverviewView({
   // ── Derived values ────────────────────────────────────────────────────────
   const available = balance?.available ?? null;
   const reserved  = balance?.reserved  ?? null;
-  const total     = balance?.total     ?? null;
 
-  const totalUsd     = total     ? parseFloat(total)     : null;
   const availableUsd = available ? parseFloat(available) : null;
   const reservedUsd  = reserved  ? parseFloat(reserved)  : null;
 
@@ -94,9 +95,13 @@ export function OverviewView({
 
   return (
     <div className="overview-view">
-      {/* Page header */}
-      <div className="page-h1">Overview</div>
-      <div className="page-subtitle">Your AntSeed account at a glance</div>
+      {/* Page title/subtitle live in the sticky TopBar (layout/TopBar.tsx). */}
+
+      {/* Onboarding checklist — self-hides once dismissed / all steps done */}
+      <GettingStarted
+        onOpenDeposit={onOpenDeposit}
+        onOpenHowItWorks={onOpenHowItWorks}
+      />
 
       {/* Stale data notice */}
       <StaleDataBanner
@@ -122,9 +127,9 @@ export function OverviewView({
             <>
               <div className="page-label">Available balance</div>
               <div className="overview-bal">
-                {totalUsd !== null ? (
+                {availableUsd !== null ? (
                   <>
-                    ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    ${availableUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                     <small>USDC</small>
                   </>
                 ) : (
@@ -132,10 +137,9 @@ export function OverviewView({
                 )}
               </div>
               <div className="overview-bal-note">
-                {availableUsd !== null && reservedUsd !== null ? (
+                {reservedUsd !== null && reservedUsd > 0 ? (
                   <>
-                    ${formatUsd(available)} available · ${formatUsd(reserved)} in{' '}
-                    {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
+                    ${formatUsd(reserved)} reserved in {activeChannels} active channel{activeChannels !== 1 ? 's' : ''}{' '}
                     ·{' '}
                   </>
                 ) : null}

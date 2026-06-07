@@ -116,9 +116,7 @@ export function ActivityView({ config: _config }: ActivityViewProps) {
 
   return (
     <div className="activity-view">
-      {/* Page header */}
-      <div className="page-h1">Activity</div>
-      <div className="page-subtitle">Settlements and channel closes</div>
+      {/* Page title/subtitle live in the sticky TopBar (layout/TopBar.tsx). */}
 
       {/* Stale data notice */}
       <StaleDataBanner
