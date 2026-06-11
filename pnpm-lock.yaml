@@ -19,6 +19,9 @@ importers:
       '@antseed/api-adapter':
         specifier: workspace:*
         version: link:../../packages/api-adapter
+      '@antseed/connect-core':
+        specifier: workspace:*
+        version: link:../../packages/connect-core
       '@antseed/node':
         specifier: workspace:*
         version: link:../../packages/node
@@ -62,6 +65,9 @@ importers:
       '@antseed/api-adapter':
         specifier: workspace:*
         version: link:../../packages/api-adapter
+      '@antseed/connect-core':
+        specifier: workspace:*
+        version: link:../../packages/connect-core
       '@antseed/node':
         specifier: workspace:*
         version: link:../../packages/node
@@ -427,6 +433,19 @@ importers:
         version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
 
   packages/api-adapter:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
+
+  packages/connect-core:
+    dependencies:
+      ethers:
+        specifier: ~6.16.0
+        version: 6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     devDependencies:
       typescript:
         specifier: ^5.5.0
@@ -2853,20 +2872,24 @@ packages:
   '@mariozechner/pi-agent-core@0.64.0':
     resolution: {integrity: sha512-IN/sIxWOD0v1OFVXHB605SGiZhO5XdEWG5dO8EAV08n3jz/p12o4OuYGvhGXmHhU28WXa/FGWC+FO5xiIih8Uw==}
     engines: {node: '>=20.0.0'}
+    deprecated: please use @earendil-works/pi-agent-core instead going forward
 
   '@mariozechner/pi-ai@0.64.0':
     resolution: {integrity: sha512-Z/Jnf+JSVDPLRcxJsa8XhYTJKIqKekNueaCpBLGQHgizL1F9RQ1Rur3rIfZpfXkt2cLu/AIPtOs223ueuoWaWg==}
     engines: {node: '>=20.0.0'}
+    deprecated: please use @earendil-works/pi-ai instead going forward
     hasBin: true
 
   '@mariozechner/pi-coding-agent@0.64.0':
     resolution: {integrity: sha512-Q4tcqSqFGQtOgCtRyIp1D80Nv2if13Q2pfbnrOlaT/mix90mLcZGML9jKVnT1jGSy5GMYudU1HsS7cx53kxb0g==}
     engines: {node: '>=20.6.0'}
+    deprecated: please use @earendil-works/pi-coding-agent instead going forward
     hasBin: true
 
   '@mariozechner/pi-tui@0.64.0':
     resolution: {integrity: sha512-W1qLry9MAuN/V3YJmMv/BJa0VaYv721NkXPg/DGItdqWxuDc+1VdNbyAnRwxblNkIpXVUWL26x64BlyFXpxmkg==}
     engines: {node: '>=20.0.0'}
+    deprecated: please use @earendil-works/pi-tui instead going forward
 
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
@@ -3196,7 +3219,7 @@ packages:
 
   '@paulmillr/qr@0.2.1':
     resolution: {integrity: sha512-IHnV6A+zxU7XwmKFinmYjUcwlyK9+xkG3/s9KcQhI9BjQKycrJ1JRO+FbNYPwZiPKW3je/DR0k7w8/gLa5eaxQ==}
-    deprecated: 'The package is now available as "qr": npm install qr'
+    deprecated: 'Switch to "qr" (new package name) for security updates: npm install qr'
 
   '@peculiar/asn1-cms@2.6.1':
     resolution: {integrity: sha512-vdG4fBF6Lkirkcl53q6eOdn3XYKt+kJTG59edgRZORlg/3atWWEReRCx5rYE1ZzTTX6vLK5zDMjHh7vbrcXGtw==}
@@ -3680,6 +3703,7 @@ packages:
   '@safe-global/safe-gateway-typescript-sdk@3.23.1':
     resolution: {integrity: sha512-6ORQfwtEJYpalCeVO21L4XXGSdbEMfyp2hEv6cP82afKXSwvse6d3sdelgaPWUxHIsFRkWvHDdzh8IyyKHZKxw==}
     engines: {node: '>=16'}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@scure/base@1.1.9':
     resolution: {integrity: sha512-8YKhl8GHiNI/pU2VMaofa2Tor7PJRAjwQLBBuilkJ9L5+13yVbC7JO/wS7piioAvPSwR3JKM1IJ/u4xQzbcXKg==}
@@ -4704,6 +4728,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@vanilla-extract/css@1.17.3':
     resolution: {integrity: sha512-jHivr1UPoJTX5Uel4AZSOwrCf4mO42LcdmnhJtUxZaRWhW4FviFbIfs0moAWWld7GOT+2XnuVZjjA/K32uUnMQ==}
@@ -10730,10 +10755,12 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   valtio@1.13.2:

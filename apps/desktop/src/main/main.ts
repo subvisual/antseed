@@ -20,6 +20,7 @@ import {
 } from './process-manager.js';
 import { registerPiChatHandlers, invalidateOnChainEnrichmentCache } from './pi-chat-engine.js';
 import { ensureSecureIdentity, secureIdentityEnv, getSecureIdentity } from './identity.js';
+import { initConnectDeepLink, markConnectReady, type ConnectDeps } from './connect.js';
 import { DepositsClient, signSpendingAuth, makeChannelsDomain, resolveChainConfig, formatUsdc, peerIdToAddress } from '@antseed/node';
 import { createServer as createPaymentsServer } from '@antseed/payments';
 import type { LogEvent, RuntimeActivityEvent } from './log-parser.js';
@@ -987,6 +988,22 @@ ipcMain.handle('runtime:scan-network', async () => {
   }
 });
 
+const connectDeps: ConnectDeps = {
+  getMainWindow,
+  ensureWindow: () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow({ appName: APP_NAME, appIconPath: APP_ICON_PATH, isDev, rendererUrl });
+    }
+  },
+  ensureIdentity: ensureSecureIdentity,
+  getIdentity: getSecureIdentity,
+  log: (line) => appendLog('connect', 'system', line),
+};
+
+// Register the antseed:// open-url listener before app ready so a cold-start
+// launch from a deep link is caught and buffered.
+initConnectDeepLink(connectDeps);
+
 app.whenReady().then(async () => {
   installAttachmentProtocol();
   app.setName(APP_NAME);
@@ -1007,6 +1024,10 @@ app.whenReady().then(async () => {
   await ensureConfig(ACTIVE_CONFIG_PATH).catch(() => {});
 
   createWindow({ appName: APP_NAME, appIconPath: APP_ICON_PATH, isDev, rendererUrl });
+
+  // Window exists and identity preload is kicked off below: flush any deep links
+  // that arrived during cold start.
+  markConnectReady(connectDeps);
 
   // Pre-load identity from encrypted store so it's ready before the first CLI spawn.
   void ensureSecureIdentity().catch(() => {
