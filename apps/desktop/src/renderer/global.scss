@@ -888,6 +888,50 @@ select.form-input {
   color: var(--text-secondary);
 }
 
+.settings-receive {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.settings-receive-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card-alt);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  max-width: 100%;
+  word-break: break-all;
+}
+
+.settings-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-copy-button:hover {
+  color: var(--text-primary);
+}
+
+.settings-receive-qr {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  line-height: 0;
+}
+
 .settings-save-btn {
   justify-self: start;
   min-width: 140px;

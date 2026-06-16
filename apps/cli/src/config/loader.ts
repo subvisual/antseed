@@ -364,6 +364,16 @@ function mergeBuyerConfig(
       ? value['metadataFetchTimeoutMs']
       : defaults.metadataFetchTimeoutMs,
     ...(normalizeBuyerVerification(value['verification'], defaults.verification)),
+    ...(isRecord(value['autoDeposit']) && typeof value['autoDeposit']['enabled'] === 'boolean'
+      ? {
+          autoDeposit: {
+            enabled: value['autoDeposit']['enabled'],
+            ...(typeof value['autoDeposit']['approvedAt'] === 'string'
+              ? { approvedAt: value['autoDeposit']['approvedAt'] }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

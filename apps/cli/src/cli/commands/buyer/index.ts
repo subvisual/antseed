@@ -8,6 +8,7 @@ import { registerBuyerSubscribeCommand } from './subscribe.js';
 import { registerBuyerConnectionCommand } from './connection.js';
 import { registerBuyerChannelsCommand } from './channels.js';
 import { registerBuyerMeteringCommand } from './metering.js';
+import { registerBuyerAutoDepositCommands } from './auto-deposit.js';
 
 export function registerBuyerCommands(program: Command): void {
   const buyerCmd = program
@@ -23,4 +24,5 @@ export function registerBuyerCommands(program: Command): void {
   registerBuyerConnectionCommand(buyerCmd);
   registerBuyerChannelsCommand(buyerCmd);
   registerBuyerMeteringCommand(buyerCmd);
+  registerBuyerAutoDepositCommands(buyerCmd);
 }

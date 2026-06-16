@@ -143,6 +143,11 @@ export interface BuyerCLIConfig {
   metadataFetchTimeoutMs: number;
   /** Buyer-side response-auth evidence sampling settings. */
   verification?: BuyerVerificationConfig;
+  /** Gasless auto-deposit consent (the user's one-time approval of the EIP-7702 upgrade). */
+  autoDeposit?: {
+    enabled: boolean;
+    approvedAt?: string;
+  };
 }
 
 /**

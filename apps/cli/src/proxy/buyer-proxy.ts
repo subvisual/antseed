@@ -5,7 +5,10 @@ import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   computeOnChainReputationScore,
+  createAutoDepositManager,
   type AntseedNode,
+  type AutoDepositManager,
+  type ChainConfig,
   type PeerInfo,
   type PeerMetadata,
   type RequestStreamResponseMetadata,
@@ -51,6 +54,7 @@ import {
   attachStreamingAntseedHeaders,
 } from './telemetry.js'
 import { DEFAULT_BUYER_PEER_REFRESH_INTERVAL_MS } from '../config/defaults.js'
+import { loadConfig, saveConfig } from '../config/loader.js'
 
 // Re-export for backward compatibility (used by tests and other consumers)
 export { selectCandidatePeersForRouting, type CandidatePeerRouteSelection } from './routing.js'
@@ -76,6 +80,9 @@ export interface BuyerProxyConfig {
    * and allowed by the buyer's pricing policy. A 502 is returned if the peer cannot be reached.
    */
   pinnedPeerId?: string
+  chainConfig?: ChainConfig
+  configPath?: string
+  autoDepositEnabled?: boolean
 }
 
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504])
@@ -88,6 +95,24 @@ function isRouterSuccess(statusCode: number, path: string, retryableStatusCodes:
   return isControlPlaneServicesPath(path) || !retryableStatusCodes.has(statusCode)
 }
 
+/**
+ * True only for genuine loopback callers: the Host must be 127.0.0.1/localhost
+ * (an exact hostname match, defeating DNS-rebinding) and any Origin must also be
+ * loopback (a cross-site browser fetch always carries a non-local Origin). Used
+ * to gate fund-moving control-plane mutations against CSRF.
+ */
+function isLoopbackControlRequest(req: IncomingMessage): boolean {
+  const hostname = (req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '')
+  if (hostname !== '127.0.0.1' && hostname !== 'localhost') return false
+  const origin = req.headers.origin
+  if (origin === undefined || origin === 'null' || origin === 'file://') return true
+  try {
+    const oh = new URL(origin).hostname
+    return oh === '127.0.0.1' || oh === 'localhost'
+  } catch {
+    return false
+  }
+}
 /**
  * Max age for carrying forward peers not seen in the latest DHT scan.
  * Intentionally longer than `peer-lookup.ts` `maxAnnouncementAgeMs` (30 min) so
@@ -370,6 +395,10 @@ export class BuyerProxy {
   private _peerRefreshPromise: Promise<PeerInfo[]> | null = null
   private _lastStaleCacheLogAtMs = 0
   private _bgRefreshHandle: ReturnType<typeof setInterval> | null = null
+  private readonly _chainConfig?: ChainConfig
+  private readonly _configPath?: string
+  private _autoDeposit: AutoDepositManager | null = null
+  private _autoDepositEnabled: boolean
   private _peerFailures: Map<string, PeerFailureEntry> = new Map()
 
   constructor(config: BuyerProxyConfig) {
@@ -380,6 +409,9 @@ export class BuyerProxy {
     this._stateDir = config.dataDir
     this._stateFile = join(config.dataDir, 'buyer.state.json')
     this._pinnedPeer = config.pinnedPeerId?.toLowerCase() ?? null
+    this._chainConfig = config.chainConfig
+    this._configPath = config.configPath
+    this._autoDepositEnabled = config.autoDepositEnabled ?? false
     this._server = createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
         log('Unhandled error:', err)
@@ -422,6 +454,7 @@ export class BuyerProxy {
       })
     })
     this._startBackgroundRefresh()
+    this._startAutoDeposit()
     // Trigger initial discovery immediately so the desktop can show services
     // without waiting for the first request or 5-minute interval. The sweep
     // emits each accepted metadata document as it arrives, so buyer.state.json
@@ -467,6 +500,8 @@ export class BuyerProxy {
       clearInterval(this._bgRefreshHandle)
       this._bgRefreshHandle = null
     }
+    this._autoDeposit?.stop()
+    this._autoDeposit = null
     await this._writeStateFile('stopped')
     return new Promise((resolve) => {
       this._server.close(() => resolve())
@@ -548,6 +583,30 @@ export class BuyerProxy {
 
   private _startIncrementalDiscoverySweep(): void {
     this._node.startBackgroundPeerDiscoverySweep()
+  }
+
+  private _startAutoDeposit(): void {
+    const chain = this._chainConfig
+    const identity = this._node.identity
+    if (!chain?.autoDeposit || !identity) return
+    const manager = createAutoDepositManager({
+      chain,
+      privateKey: identity.wallet.privateKey as `0x${string}`,
+      // Consent lives in config.json (buyer.autoDeposit); the proxy holds the live
+      // value and the control endpoint persists changes.
+      consent: { isEnabled: () => this._autoDepositEnabled },
+      onAttention: (message) => log('[auto-deposit] needs attention:', message),
+    })
+    if (!manager) return
+    this._autoDeposit = manager
+    manager.start()
+  }
+
+  private async _persistAutoDepositConsent(enabled: boolean): Promise<void> {
+    if (!this._configPath) return
+    const config = await loadConfig(this._configPath)
+    config.buyer.autoDeposit = enabled ? { enabled: true, approvedAt: new Date().toISOString() } : { enabled: false }
+    await saveConfig(this._configPath, config)
   }
 
   private _startBackgroundRefresh(): void {
@@ -844,6 +903,69 @@ export class BuyerProxy {
       }))
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true, peers: payload }))
+      return
+    }
+
+    if (path === '/_antseed/auto-deposit' && method === 'GET') {
+      const status = this._autoDeposit?.getStatus() ?? {
+        enabled: false, delegated: false, state: 'disabled',
+        looseBaseUnits: '0', strandedBaseUnits: '0', creditLimitBaseUnits: '0',
+        lastDeposit: null, lastError: null,
+      }
+      const address = this._node.identity?.wallet.address ?? null
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, autoDeposit: { ...status, address } }))
+      return
+    }
+
+    if (path === '/_antseed/auto-deposit' && method === 'POST') {
+      // Mutating, fund-moving endpoint (enables consent + 7702 delegation). Only
+      // accept genuine loopback callers: a strict Host/Origin check blunts CSRF
+      // and DNS-rebinding from a web page (CORS alone does not prevent the request).
+      if (!isLoopbackControlRequest(req)) {
+        res.writeHead(403, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Forbidden' }))
+        return
+      }
+      if (!this._chainConfig?.autoDeposit) {
+        res.writeHead(409, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Gasless auto-deposit is not available on this chain' }))
+        return
+      }
+      const chunks: Buffer[] = []
+      let totalSize = 0
+      for await (const chunk of req) {
+        totalSize += (chunk as Buffer).length
+        if (totalSize > 8192) {
+          res.writeHead(413, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: 'Request body too large' }))
+          return
+        }
+        chunks.push(chunk as Buffer)
+      }
+      let enabled: boolean
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString())
+        if (typeof body.enabled !== 'boolean') throw new Error('enabled must be a boolean')
+        enabled = body.enabled
+      } catch {
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Body must be {"enabled": boolean}' }))
+        return
+      }
+      // Persist first; never act on consent that was not durably recorded.
+      try {
+        await this._persistAutoDepositConsent(enabled)
+      } catch {
+        res.writeHead(500, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Failed to persist consent' }))
+        return
+      }
+      this._autoDepositEnabled = enabled
+      // re-evaluate immediately so a freshly-funded wallet deposits without waiting a tick
+      if (enabled) void this._autoDeposit?.runOnce()
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, enabled }))
       return
     }
 

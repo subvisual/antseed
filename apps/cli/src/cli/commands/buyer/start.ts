@@ -398,6 +398,9 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
         pinnedPeerId,
         dataDir: globalOpts.dataDir,
         backgroundRefreshIntervalMs: effectiveBuyerConfig.peerRefreshIntervalMs,
+        chainConfig,
+        configPath: globalOpts.config,
+        autoDepositEnabled: config.buyer.autoDeposit?.enabled ?? false,
       })
       let ownsProxyListener = false
 

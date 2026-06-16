@@ -22,6 +22,8 @@ Command-line interface and web dashboard for the AntSeed Network — a P2P netwo
 | `antseed buyer deposit <amount>` | Deposit USDC for payments |
 | `antseed buyer withdraw <amount>` | Withdraw USDC from deposits |
 | `antseed buyer balance` | Check wallet and deposit balance |
+| `antseed buyer enable-auto-deposit` | Turn on auto-deposit (sweeps wallet USDC into deposits, gas paid in USDC) |
+| `antseed buyer disable-auto-deposit` | Turn off auto-deposit |
 | `antseed network browse` | Browse available services and pricing |
 | `antseed payments` | Launch the payments portal |
 | **Session** | |

@@ -140,6 +140,18 @@ test('loadConfig preserves buyer verification sampling settings', async () => {
   );
 });
 
+test('loadConfig preserves buyer.autoDeposit consent', async () => {
+  await withTempConfig(
+    JSON.stringify({
+      buyer: { autoDeposit: { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' } },
+    }),
+    async (configPath) => {
+      const config = await loadConfig(configPath);
+      assert.deepEqual(config.buyer.autoDeposit, { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' });
+    }
+  );
+});
+
 test('loadConfig rejects invalid buyer verification sampleRate', async () => {
   await withTempConfig(
     JSON.stringify({
@@ -154,6 +166,16 @@ test('loadConfig rejects invalid buyer verification sampleRate', async () => {
         async () => loadConfig(configPath),
         /buyer\.verification\.sampleRate/
       );
+    }
+  );
+});
+
+test('loadConfig drops a malformed buyer.autoDeposit', async () => {
+  await withTempConfig(
+    JSON.stringify({ buyer: { autoDeposit: { enabled: 'yes' } } }),
+    async (configPath) => {
+      const config = await loadConfig(configPath);
+      assert.equal(config.buyer.autoDeposit, undefined);
     }
   );
 });

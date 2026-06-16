@@ -76,6 +76,10 @@ export { IdentityClient, type IdentityClientConfig } from './payments/evm/identi
 export { StakingClient, type StakingClientConfig } from './payments/evm/staking-client.js';
 export { EmissionsClient, type EmissionsClientConfig, type EmissionsEpochParams } from './payments/evm/emissions-client.js';
 export { ANTSTokenClient, type ANTSTokenClientConfig } from './payments/evm/ants-token-client.js';
+export { GaslessDepositsClient, type GaslessDepositsConfig, type GaslessDepositResult } from './payments/auto-deposit/gasless-deposits-client.js';
+export { AutoDepositManager, planDeposit, isDeterministicError } from './payments/auto-deposit/manager.js';
+export type { AutoDepositState, AutoDepositStatus, AutoDepositManagerConfig, AutoDepositConsentView } from './payments/auto-deposit/manager.js';
+export { createAutoDepositManager, gaslessConfigFromChain } from './payments/auto-deposit/factory.js';
 export {
   StatsClient,
   type StatsClientConfig,
@@ -107,7 +111,7 @@ export type { SellerPaymentConfig } from './payments/seller-payment-manager.js';
 export { ChannelStore } from './payments/channel-store.js';
 export type { StoredChannel, StoredReceipt } from './payments/channel-store.js';
 export { getChainConfig, resolveChainConfig, DEFAULT_CHAIN_ID, CHAIN_CONFIGS } from './payments/chain-config.js';
-export type { ChainConfig } from './payments/chain-config.js';
+export type { ChainConfig, AutoDepositChainConfig } from './payments/chain-config.js';
 export { formatUsdc, parseUsdc } from './payments/usdc-utils.js';
 export { ProxyMux } from './proxy/proxy-mux.js';
 export {

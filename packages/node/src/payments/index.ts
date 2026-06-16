@@ -86,3 +86,14 @@ export type { ServicePricing } from './pricing.js';
 // Readiness checks
 export { checkSellerReadiness, checkBuyerReadiness } from './readiness.js';
 export type { ReadinessCheck } from './readiness.js';
+
+// Auto-deposit (gasless USDC sweep — Circle Paymaster + EIP-7702)
+export { GaslessDepositsClient } from './auto-deposit/gasless-deposits-client.js';
+export type { GaslessDepositsConfig, GaslessDepositResult } from './auto-deposit/gasless-deposits-client.js';
+export { isDelegationCode, delegationTarget } from './auto-deposit/codec.js';
+export { AutoDepositManager, planDeposit, isDeterministicError } from './auto-deposit/manager.js';
+export type {
+  AutoDepositState, AutoDepositStatus, AutoDepositReader, AutoDepositExecutor,
+  AutoDepositManagerConfig, AutoDepositConsentView, DepositPlan,
+} from './auto-deposit/manager.js';
+export { createAutoDepositManager, gaslessConfigFromChain } from './auto-deposit/factory.js';
