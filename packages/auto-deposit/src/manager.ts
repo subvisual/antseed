@@ -4,11 +4,11 @@
  * gasless executor. Monitoring is on by default; the first deposit is gated by
  * the user's one-time approval (consent).
  */
-import { debugLog, debugWarn } from '../../utils/debug.js';
+import { debugLog, debugWarn } from './debug.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 45_000;
-const DEFAULT_DUST_FLOOR = 2_000_000n;   // 2 USDC — at/above this we consider depositing
-const DEFAULT_GAS_RESERVE = 2_000_000n;  // 2 USDC kept back for the paymaster's gas pull
+const DEFAULT_DUST_FLOOR = 500_000n;   // 0.5 USDC — at/above this we consider depositing
+const DEFAULT_GAS_RESERVE = 500_000n;  // 0.5 USDC kept back for the paymaster's gas pull
 const DEFAULT_MIN_DEPOSIT = 1_000_000n;  // AntseedDeposits MIN_BUYER_DEPOSIT (first deposit only)
 const DEFAULT_BACKOFF_BASE_MS = 30_000;
 const DEFAULT_BACKOFF_MAX_MS = 600_000;

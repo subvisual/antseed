@@ -1,5 +1,5 @@
 import {
-  createPublicClient, http, getContract, maxUint256, parseErc6492Signature,
+  createPublicClient, http, fallback, getContract, maxUint256, parseErc6492Signature,
   erc20Abi, isAddressEqual, defineChain, type Address, type Hex, type Chain, type PublicClient,
 } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
@@ -59,6 +59,8 @@ const PERMIT_TYPES = {
 export interface GaslessDepositsConfig {
   evmChainId: number;
   rpcUrl: string;
+  /** Additional RPC endpoints tried in order if `rpcUrl` fails (viem fallback transport). */
+  fallbackRpcUrls?: string[];
   bundlerUrl: string;
   usdcAddress: Address;
   paymasterAddress: Address;
@@ -100,7 +102,14 @@ export class GaslessDepositsClient {
     this._entryPoint = cfg.entryPointAddress ?? entryPoint08Address;
     this._maxGasUsdc = cfg.maxGasUsdc ?? DEFAULT_MAX_GAS_USDC;
     this._chain = resolveViemChain(cfg.evmChainId, cfg.rpcUrl);
-    this._client = createPublicClient({ chain: this._chain, transport: http(cfg.rpcUrl) });
+    // Mirror the ethers FallbackProvider the rest of the app uses: a single public
+    // RPC rejecting a read (rate limit, transport error) must fail over, not stall
+    // the whole funding loop on a backoff against one bad endpoint.
+    const rpcUrls = [cfg.rpcUrl, ...(cfg.fallbackRpcUrls ?? [])];
+    this._client = createPublicClient({
+      chain: this._chain,
+      transport: rpcUrls.length > 1 ? fallback(rpcUrls.map((url) => http(url))) : http(cfg.rpcUrl),
+    });
   }
 
   get address(): Address {

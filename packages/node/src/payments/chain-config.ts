@@ -1,13 +1,5 @@
 import type { ChainId } from './types.js';
 
-/** Config for gasless USDC auto-deposit (Circle Paymaster + EIP-7702). */
-export interface AutoDepositChainConfig {
-  bundlerUrl: string;
-  paymasterAddress: string;
-  entryPointAddress: string;
-  delegateAddress: string;
-}
-
 export interface ChainConfig {
   chainId: ChainId;
   evmChainId: number;
@@ -36,13 +28,7 @@ export interface ChainConfig {
   statsDeployBlock?: number;
   /** Public URL of the @antseed/network-stats aggregator that indexes the stats contract for this chain. */
   networkStatsUrl?: string;
-  /** Gasless auto-deposit config; absent ⇒ chain is not gasless-capable. */
-  autoDeposit?: AutoDepositChainConfig;
 }
-
-// EntryPoint v0.8 + Simple7702Account v0.8 — canonical singletons, same on every chain.
-const ENTRY_POINT_V08 = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108';
-const SIMPLE_7702_ACCOUNT_V08 = '0xe6Cae83BdE06E4c305530e199D7217f42808555B';
 
 /**
  * Official contract addresses per chain.
@@ -71,12 +57,6 @@ const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
     statsContractAddress: '0x15649ff076bfa5e37e24ee3154a00503149954fd',
     statsDeployBlock: 44469557,
     networkStatsUrl: 'https://network.antseed.com',
-    autoDeposit: {
-      bundlerUrl: 'https://public.pimlico.io/v2/8453/rpc',
-      paymasterAddress: '0x0578cFB241215b77442a541325d6A4E6dFE700Ec',
-      entryPointAddress: ENTRY_POINT_V08,
-      delegateAddress: SIMPLE_7702_ACCOUNT_V08,
-    },
   },
   'base-sepolia': {
     chainId: 'base-sepolia',
@@ -88,10 +68,6 @@ const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
     stakingContractAddress: '0x1CB76B197a20E41f9AA01806B41C59e16Cad46a7',
     emissionsContractAddress: '0x9B30DAcfC20F0927fFD49fB0B84cf3EB83976a33',
     identityRegistryAddress: '0x8004A818BFB912233c491871b3d84c89A494BD9e',
-    // No autoDeposit: this deployment's USDC (usdcContractAddress) is an AntSeed
-    // mock, but Circle's paymaster only charges in Circle USDC, so the gasless
-    // path would deterministic-fail. Re-add once Deposits is wired to Circle USDC
-    // (Circle Sepolia USDC: 0x036CbD53842c5426634e7929541eC2318f3dCF7e).
   },
   'base-local': {
     chainId: 'base-local',
@@ -137,7 +113,6 @@ export function resolveChainConfig(overrides?: {
   legacyEmissionsContractAddress?: string;
   antsTokenAddress?: string;
   subPoolContractAddress?: string;
-  autoDeposit?: AutoDepositChainConfig;
 }): ChainConfig {
   const base = getChainConfig(overrides?.chainId);
   // If the caller overrode the primary rpcUrl without providing their own
@@ -159,7 +134,6 @@ export function resolveChainConfig(overrides?: {
     ...(overrides?.legacyEmissionsContractAddress ? { legacyEmissionsContractAddress: overrides.legacyEmissionsContractAddress } : {}),
     ...(overrides?.antsTokenAddress ? { antsTokenAddress: overrides.antsTokenAddress } : {}),
     ...(overrides?.subPoolContractAddress ? { subPoolContractAddress: overrides.subPoolContractAddress } : {}),
-    ...(overrides?.autoDeposit ? { autoDeposit: overrides.autoDeposit } : {}),
   };
 }
 

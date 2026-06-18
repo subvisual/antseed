@@ -21,42 +21,32 @@ function isVoiceModelStatus(value: unknown): value is VoiceModelStatus {
   return Boolean(record && Array.isArray(record.models));
 }
 
-type AutoDepositStatus = {
+type FundingStatus = {
   enabled: boolean;
-  delegated: boolean;
-  state: string;
-  looseBaseUnits: string;
-  strandedBaseUnits: string;
-  creditLimitBaseUnits: string;
-  lastDeposit: { txHash: string; amountBaseUnits: string; at: string } | null;
-  lastError: string | null;
-  address: string | null;
+  attention: boolean;
+  summary: string;
+  receiveAddress?: string | null;
 };
 
-function isAutoDepositStatus(value: unknown): value is AutoDepositStatus {
-  const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
-  return Boolean(record && typeof record.state === 'string' && typeof record.enabled === 'boolean');
-}
+type FundingPluginView = {
+  name: string;
+  displayName: string;
+  description: string;
+  status: FundingStatus;
+};
 
-function formatUsdc(baseUnits: string): string {
-  return (Number(baseUnits) / 1_000_000).toFixed(2);
+function isFundingList(value: unknown): value is FundingPluginView[] {
+  return Array.isArray(value) && value.every((item) => {
+    const record = item && typeof item === 'object' ? item as Record<string, unknown> : null;
+    const status = record && typeof record.status === 'object' ? record.status as Record<string, unknown> : null;
+    return Boolean(record && typeof record.name === 'string' && status && typeof status.enabled === 'boolean');
+  });
 }
 
 function chainLabel(chainId: string): string {
   if (chainId === 'base-mainnet') return 'Base';
   if (chainId === 'base-sepolia') return 'Base Sepolia';
   return chainId;
-}
-
-function autoDepositSummary(s: AutoDepositStatus): string {
-  switch (s.state) {
-    case 'needs_attention': return `Needs attention: ${s.lastError ?? 'see logs'}`;
-    case 'backoff': return 'Retrying…';
-    case 'pending': return 'Depositing…';
-    case 'stranded': return `${formatUsdc(s.strandedBaseUnits)} USDC waiting (credit limit reached; deposits resume as it grows)`;
-    case 'idle': return s.delegated ? 'Active' : 'Active. Your wallet upgrades on the first deposit';
-    default: return 'Active';
-  }
 }
 
 export function ConfigView({ active }: ConfigViewProps) {
@@ -71,9 +61,9 @@ export function ConfigView({ active }: ConfigViewProps) {
   const [voiceStatus, setVoiceStatus] = useState<VoiceModelStatus | null>(null);
   const [voiceInstalling, setVoiceInstalling] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
-  const [autoDeposit, setAutoDeposit] = useState<AutoDepositStatus | null>(null);
-  const [autoDepositBusy, setAutoDepositBusy] = useState(false);
-  const [autoDepositMessage, setAutoDepositMessage] = useState<string | null>(null);
+  const [funding, setFunding] = useState<FundingPluginView[]>([]);
+  const [fundingBusy, setFundingBusy] = useState<string | null>(null);
+  const [fundingMessage, setFundingMessage] = useState<string | null>(null);
 
   // Sync from config on first load only
   const [initialized, setInitialized] = useState(false);
@@ -97,25 +87,25 @@ export function ConfigView({ active }: ConfigViewProps) {
     if (active) void refreshVoiceStatus();
   }, [active, refreshVoiceStatus]);
 
-  const refreshAutoDeposit = useCallback(async () => {
+  const refreshFunding = useCallback(async () => {
     const result = await window.antseedDesktop?.apiTryProxyRequest?.({
       port: parseInt(proxyPort, 10) || 8377,
-      path: '/_antseed/auto-deposit',
+      path: '/_antseed/funding',
       method: 'GET', headers: {}, body: '',
     });
     if (!result?.ok) return;
     try {
-      const data = JSON.parse(result.body) as { autoDeposit?: unknown };
-      if (isAutoDepositStatus(data.autoDeposit)) setAutoDeposit(data.autoDeposit);
+      const data = JSON.parse(result.body) as { funding?: unknown };
+      if (isFundingList(data.funding)) setFunding(data.funding);
     } catch { /* ignore transient poll/parse errors */ }
   }, [proxyPort]);
 
   useEffect(() => {
     if (!active) return;
-    void refreshAutoDeposit();
-    const timer = setInterval(() => void refreshAutoDeposit(), 5000);
+    void refreshFunding();
+    const timer = setInterval(() => void refreshFunding(), 5000);
     return () => clearInterval(timer);
-  }, [active, refreshAutoDeposit]);
+  }, [active, refreshFunding]);
 
   async function handleVoiceModelChange(modelId: string) {
     setVoiceMessage(null);
@@ -142,26 +132,25 @@ export function ConfigView({ active }: ConfigViewProps) {
     }
   }
 
-  async function toggleAutoDeposit() {
-    const next = !(autoDeposit?.enabled ?? false);
-    setAutoDepositBusy(true);
-    setAutoDepositMessage(null);
+  async function toggleFunding(name: string, enabled: boolean) {
+    setFundingBusy(name);
+    setFundingMessage(null);
     try {
       const result = await window.antseedDesktop?.apiTryProxyRequest?.({
         port: parseInt(proxyPort, 10) || 8377,
-        path: '/_antseed/auto-deposit',
+        path: '/_antseed/funding',
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({ name, enabled }),
       });
       if (!result?.ok) throw new Error(result?.error || `Request failed (${result?.status ?? 0})`);
       const data = JSON.parse(result.body) as { ok?: boolean; error?: string };
       if (!data.ok) throw new Error(data.error || 'Request rejected');
-      await refreshAutoDeposit();
+      await refreshFunding();
     } catch (error) {
-      setAutoDepositMessage(error instanceof Error ? error.message : String(error));
+      setFundingMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setAutoDepositBusy(false);
+      setFundingBusy(null);
     }
   }
 
@@ -272,50 +261,56 @@ export function ConfigView({ active }: ConfigViewProps) {
             <h3>Funding</h3>
           </div>
           <div className="settings-stack">
-            <div className="settings-item">
-              <div className="settings-copy">
-                <h4>Auto-deposit</h4>
-                <p>Automatically move USDC sent to your wallet into the network so it can buy services. Gas is paid in USDC, no ETH needed. Your wallet is upgraded once (EIP-7702) on the first deposit.</p>
-              </div>
-              <button
-                type="button"
-                className={`settings-switch${autoDeposit?.enabled ? ' is-on' : ''}`}
-                aria-pressed={autoDeposit?.enabled ?? false}
-                onClick={() => void toggleAutoDeposit()}
-                disabled={autoDepositBusy}
-              >
-                <span className="settings-switch-track">
-                  <span className="settings-switch-thumb" />
-                </span>
-                <span className="settings-switch-label">{autoDeposit?.enabled ? 'On' : 'Off'}</span>
-              </button>
-            </div>
-            {autoDeposit?.enabled ? (
-              autoDeposit.state === 'needs_attention'
-                ? <p className="settings-message error">{autoDepositSummary(autoDeposit)}</p>
-                : <p className="settings-note">{autoDepositSummary(autoDeposit)}</p>
-            ) : null}
-            {autoDeposit?.enabled && autoDeposit.address ? (
-              <div className="settings-receive">
-                <p className="settings-note">
-                  Send USDC on {chainLabel(chainId)} to this address to fund your wallet. Only send USDC on {chainLabel(chainId)}; other tokens or chains may be lost.
-                </p>
-                <div className="settings-receive-address">
-                  <span>{autoDeposit.address}</span>
-                  <ChatCopyButton
-                    className="settings-copy-button"
-                    text={autoDeposit.address}
-                    ariaLabel="Copy wallet address"
-                    tooltipLabel="Copy address"
-                    copiedTooltipLabel="Copied!"
-                  />
+            {funding.length === 0 ? (
+              <p className="settings-note">No funding options are available on this network.</p>
+            ) : funding.map((plugin) => (
+              <div key={plugin.name}>
+                <div className="settings-item">
+                  <div className="settings-copy">
+                    <h4>{plugin.displayName}</h4>
+                    <p>{plugin.description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-switch${plugin.status.enabled ? ' is-on' : ''}`}
+                    aria-pressed={plugin.status.enabled}
+                    onClick={() => void toggleFunding(plugin.name, !plugin.status.enabled)}
+                    disabled={fundingBusy === plugin.name}
+                  >
+                    <span className="settings-switch-track">
+                      <span className="settings-switch-thumb" />
+                    </span>
+                    <span className="settings-switch-label">{plugin.status.enabled ? 'On' : 'Off'}</span>
+                  </button>
                 </div>
-                <div className="settings-receive-qr">
-                  <QRCode value={autoDeposit.address} size={160} bgColor="#ffffff" fgColor="#000000" />
-                </div>
+                {plugin.status.enabled ? (
+                  plugin.status.attention
+                    ? <p className="settings-message error">{plugin.status.summary}</p>
+                    : <p className="settings-note">{plugin.status.summary}</p>
+                ) : null}
+                {plugin.status.enabled && plugin.status.receiveAddress ? (
+                  <div className="settings-receive">
+                    <p className="settings-note">
+                      Send USDC on {chainLabel(chainId)} to this address to fund your wallet. Only send USDC on {chainLabel(chainId)}; other tokens or chains may be lost.
+                    </p>
+                    <div className="settings-receive-address">
+                      <span>{plugin.status.receiveAddress}</span>
+                      <ChatCopyButton
+                        className="settings-copy-button"
+                        text={plugin.status.receiveAddress}
+                        ariaLabel="Copy wallet address"
+                        tooltipLabel="Copy address"
+                        copiedTooltipLabel="Copied!"
+                      />
+                    </div>
+                    <div className="settings-receive-qr">
+                      <QRCode value={plugin.status.receiveAddress} size={160} bgColor="#ffffff" fgColor="#000000" />
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-            {autoDepositMessage ? <p className="settings-note">{autoDepositMessage}</p> : null}
+            ))}
+            {fundingMessage ? <p className="settings-note">{fundingMessage}</p> : null}
           </div>
         </article>
 

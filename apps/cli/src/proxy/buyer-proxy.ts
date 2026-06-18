@@ -3,11 +3,10 @@ import { randomUUID } from 'node:crypto'
 import { watchFile, unwatchFile } from 'node:fs'
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { AntseedFundingPlugin, FundingService } from '@antseed/auto-deposit'
 import {
   computeOnChainReputationScore,
-  createAutoDepositManager,
   type AntseedNode,
-  type AutoDepositManager,
   type ChainConfig,
   type PeerInfo,
   type PeerMetadata,
@@ -82,7 +81,8 @@ export interface BuyerProxyConfig {
   pinnedPeerId?: string
   chainConfig?: ChainConfig
   configPath?: string
-  autoDepositEnabled?: boolean
+  fundingPlugins?: AntseedFundingPlugin[]
+  fundingConsent?: Record<string, boolean>
 }
 
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504])
@@ -397,8 +397,9 @@ export class BuyerProxy {
   private _bgRefreshHandle: ReturnType<typeof setInterval> | null = null
   private readonly _chainConfig?: ChainConfig
   private readonly _configPath?: string
-  private _autoDeposit: AutoDepositManager | null = null
-  private _autoDepositEnabled: boolean
+  private readonly _fundingPlugins: AntseedFundingPlugin[]
+  private _funding: Map<string, FundingService> = new Map()
+  private _fundingConsent: Record<string, boolean>
   private _peerFailures: Map<string, PeerFailureEntry> = new Map()
 
   constructor(config: BuyerProxyConfig) {
@@ -411,7 +412,8 @@ export class BuyerProxy {
     this._pinnedPeer = config.pinnedPeerId?.toLowerCase() ?? null
     this._chainConfig = config.chainConfig
     this._configPath = config.configPath
-    this._autoDepositEnabled = config.autoDepositEnabled ?? false
+    this._fundingPlugins = config.fundingPlugins ?? []
+    this._fundingConsent = { ...(config.fundingConsent ?? {}) }
     this._server = createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
         log('Unhandled error:', err)
@@ -454,7 +456,7 @@ export class BuyerProxy {
       })
     })
     this._startBackgroundRefresh()
-    this._startAutoDeposit()
+    void this._startFunding()
     // Trigger initial discovery immediately so the desktop can show services
     // without waiting for the first request or 5-minute interval. The sweep
     // emits each accepted metadata document as it arrives, so buyer.state.json
@@ -500,8 +502,8 @@ export class BuyerProxy {
       clearInterval(this._bgRefreshHandle)
       this._bgRefreshHandle = null
     }
-    this._autoDeposit?.stop()
-    this._autoDeposit = null
+    for (const service of this._funding.values()) service.stop()
+    this._funding.clear()
     await this._writeStateFile('stopped')
     return new Promise((resolve) => {
       this._server.close(() => resolve())
@@ -585,27 +587,32 @@ export class BuyerProxy {
     this._node.startBackgroundPeerDiscoverySweep()
   }
 
-  private _startAutoDeposit(): void {
+  private async _startFunding(): Promise<void> {
     const chain = this._chainConfig
     const identity = this._node.identity
-    if (!chain?.autoDeposit || !identity) return
-    const manager = createAutoDepositManager({
-      chain,
-      privateKey: identity.wallet.privateKey as `0x${string}`,
-      // Consent lives in config.json (buyer.autoDeposit); the proxy holds the live
-      // value and the control endpoint persists changes.
-      consent: { isEnabled: () => this._autoDepositEnabled },
-      onAttention: (message) => log('[auto-deposit] needs attention:', message),
-    })
-    if (!manager) return
-    this._autoDeposit = manager
-    manager.start()
+    if (!chain || !identity) return
+    const privateKey = identity.wallet.privateKey as `0x${string}`
+    for (const plugin of this._fundingPlugins) {
+      const service = await plugin.createFundingService({
+        chain,
+        privateKey,
+        // Consent lives in config.json (buyer.funding[name]); the proxy holds the
+        // live value and the control endpoint persists changes.
+        consent: { isEnabled: () => this._fundingConsent[plugin.name] ?? false },
+        onAttention: (message) => log(`[funding:${plugin.name}] needs attention:`, message),
+      })
+      if (!service) continue
+      this._funding.set(plugin.name, service)
+      service.start()
+    }
   }
 
-  private async _persistAutoDepositConsent(enabled: boolean): Promise<void> {
+  private async _persistFundingConsent(name: string, enabled: boolean): Promise<void> {
     if (!this._configPath) return
     const config = await loadConfig(this._configPath)
-    config.buyer.autoDeposit = enabled ? { enabled: true, approvedAt: new Date().toISOString() } : { enabled: false }
+    const funding = { ...(config.buyer.funding ?? {}) }
+    funding[name] = enabled ? { enabled: true, approvedAt: new Date().toISOString() } : { enabled: false }
+    config.buyer.funding = funding
     await saveConfig(this._configPath, config)
   }
 
@@ -906,30 +913,28 @@ export class BuyerProxy {
       return
     }
 
-    if (path === '/_antseed/auto-deposit' && method === 'GET') {
-      const status = this._autoDeposit?.getStatus() ?? {
-        enabled: false, delegated: false, state: 'disabled',
-        looseBaseUnits: '0', strandedBaseUnits: '0', creditLimitBaseUnits: '0',
-        lastDeposit: null, lastError: null,
-      }
-      const address = this._node.identity?.wallet.address ?? null
+    if (path === '/_antseed/funding' && method === 'GET') {
+      const funding = this._fundingPlugins
+        .filter((plugin) => this._funding.has(plugin.name))
+        .map((plugin) => ({
+          name: plugin.name,
+          displayName: plugin.displayName,
+          description: plugin.description,
+          status: this._funding.get(plugin.name)!.getStatus(),
+        }))
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, autoDeposit: { ...status, address } }))
+      res.end(JSON.stringify({ ok: true, funding }))
       return
     }
 
-    if (path === '/_antseed/auto-deposit' && method === 'POST') {
-      // Mutating, fund-moving endpoint (enables consent + 7702 delegation). Only
-      // accept genuine loopback callers: a strict Host/Origin check blunts CSRF
-      // and DNS-rebinding from a web page (CORS alone does not prevent the request).
+    if (path === '/_antseed/funding' && method === 'POST') {
+      // Mutating, fund-moving endpoint (enables consent + e.g. 7702 delegation).
+      // Only accept genuine loopback callers: a strict Host/Origin check blunts
+      // CSRF and DNS-rebinding from a web page (CORS alone does not prevent the
+      // request).
       if (!isLoopbackControlRequest(req)) {
         res.writeHead(403, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: false, error: 'Forbidden' }))
-        return
-      }
-      if (!this._chainConfig?.autoDeposit) {
-        res.writeHead(409, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: 'Gasless auto-deposit is not available on this chain' }))
         return
       }
       const chunks: Buffer[] = []
@@ -943,29 +948,38 @@ export class BuyerProxy {
         }
         chunks.push(chunk as Buffer)
       }
+      let name: string
       let enabled: boolean
       try {
         const body = JSON.parse(Buffer.concat(chunks).toString())
+        if (typeof body.name !== 'string' || !body.name) throw new Error('name must be a non-empty string')
         if (typeof body.enabled !== 'boolean') throw new Error('enabled must be a boolean')
+        name = body.name
         enabled = body.enabled
       } catch {
         res.writeHead(400, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: 'Body must be {"enabled": boolean}' }))
+        res.end(JSON.stringify({ ok: false, error: 'Body must be {"name": string, "enabled": boolean}' }))
+        return
+      }
+      const service = this._funding.get(name)
+      if (!service) {
+        res.writeHead(409, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: `Funding plugin "${name}" is not available` }))
         return
       }
       // Persist first; never act on consent that was not durably recorded.
       try {
-        await this._persistAutoDepositConsent(enabled)
+        await this._persistFundingConsent(name, enabled)
       } catch {
         res.writeHead(500, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: false, error: 'Failed to persist consent' }))
         return
       }
-      this._autoDepositEnabled = enabled
-      // re-evaluate immediately so a freshly-funded wallet deposits without waiting a tick
-      if (enabled) void this._autoDeposit?.runOnce()
+      this._fundingConsent[name] = enabled
+      // re-evaluate immediately so a freshly-funded wallet acts without waiting a tick
+      if (enabled) void service.poke?.()
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, enabled }))
+      res.end(JSON.stringify({ ok: true, name, enabled }))
       return
     }
 

@@ -364,17 +364,28 @@ function mergeBuyerConfig(
       ? value['metadataFetchTimeoutMs']
       : defaults.metadataFetchTimeoutMs,
     ...(normalizeBuyerVerification(value['verification'], defaults.verification)),
-    ...(isRecord(value['autoDeposit']) && typeof value['autoDeposit']['enabled'] === 'boolean'
-      ? {
-          autoDeposit: {
-            enabled: value['autoDeposit']['enabled'],
-            ...(typeof value['autoDeposit']['approvedAt'] === 'string'
-              ? { approvedAt: value['autoDeposit']['approvedAt'] }
-              : {}),
-          },
-        }
-      : {}),
+    ...(normalizeBuyerFunding(value['funding'])),
   };
+}
+
+function normalizeFundingEntry(entry: unknown): { enabled: boolean; approvedAt?: string } | null {
+  if (!isRecord(entry) || typeof entry['enabled'] !== 'boolean') return null;
+  return {
+    enabled: entry['enabled'],
+    ...(typeof entry['approvedAt'] === 'string' ? { approvedAt: entry['approvedAt'] } : {}),
+  };
+}
+
+function normalizeBuyerFunding(
+  fundingValue: unknown,
+): { funding: NonNullable<AntseedConfig['buyer']['funding']> } | Record<string, never> {
+  if (!isRecord(fundingValue)) return {};
+  const out: Record<string, { enabled: boolean; approvedAt?: string }> = {};
+  for (const [name, entry] of Object.entries(fundingValue)) {
+    const normalized = normalizeFundingEntry(entry);
+    if (normalized) out[name] = normalized;
+  }
+  return Object.keys(out).length > 0 ? { funding: out } : {};
 }
 
 /**
