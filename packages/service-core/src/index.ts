@@ -1,47 +1,39 @@
 /**
- * Generic contract for Antseed host-driven service plugins.
+ * Shared infrastructure for Antseed service plugins.
  *
  * A service plugin runs a start/stop background lifecycle on the buyer's behalf
- * (e.g. the gasless auto-deposit funder). The host supplies consent and a
- * logger; capability-bearing hosts (e.g. a wallet-backed funding host) extend
- * {@link ServiceHost}. This is deliberately separate from the protocol plugin
- * system (provider/router in @antseed/node): those are installable third-party
- * packages that handle requests, whereas service plugins are bundled, trusted,
- * and driven by a host that may hold sensitive capabilities like a wallet key.
+ * (e.g. the gasless auto-deposit funder). The plugin *type* and runtime
+ * contracts live in @antseed/node alongside the provider/router plugin types;
+ * this package provides the reusable helpers concrete service plugins build on,
+ * mirroring how @antseed/provider-core and @antseed/router-core relate to node.
  */
+import type { ChainConfig, ServiceHost, WalletCapability } from '@antseed/node'
 
-/** Serializable, mechanism-agnostic status a client (e.g. the desktop) renders. */
-export interface ServiceStatus {
-  enabled: boolean;
-  /** True when the service is paused on a deterministic failure; drives error styling. */
-  attention: boolean;
-  /** Human-readable status line. */
-  summary: string;
-  /** Optional address the user can fund; present => UI shows copy + QR. */
-  receiveAddress?: string | null;
+export type {
+  AntseedServicePlugin,
+  Service,
+  ServiceStatus,
+  ServiceHost,
+  ServiceCapability,
+  ServiceCapabilities,
+  WalletCapability,
+} from '@antseed/node'
+
+/** Read the wallet capability or throw. Use when the plugin declared 'wallet'
+ * in its capabilities; the host guarantees it, so absence is a misconfig. */
+export function requireWallet(host: ServiceHost): WalletCapability {
+  const wallet = host.capabilities.wallet
+  if (!wallet) {
+    throw new Error('Service host did not grant the "wallet" capability')
+  }
+  return wallet
 }
 
-/** Baseline context every service gets. Specific services extend this with the
- * capabilities they need (e.g. a wallet key + chain). */
-export interface ServiceHost {
-  consent: { isEnabled(): boolean };
-  onAttention?(message: string): void;
-}
-
-export interface Service {
-  start(): void;
-  stop(): void;
-  getStatus(): ServiceStatus;
-  /** Optional: trigger an immediate evaluation, e.g. right after consent is enabled. */
-  poke?(): void | Promise<void>;
-}
-
-export interface AntseedServicePlugin<THost extends ServiceHost = ServiceHost> {
-  /** Discriminates the family of service (e.g. "funding"). */
-  kind: string;
-  name: string;
-  displayName: string;
-  version: string;
-  description: string;
-  createService(host: THost): Service | null | Promise<Service | null>;
+/** Read the chain capability or throw. Use when the plugin declared 'chain'. */
+export function requireChain(host: ServiceHost): ChainConfig {
+  const chain = host.capabilities.chain
+  if (!chain) {
+    throw new Error('Service host did not grant the "chain" capability')
+  }
+  return chain
 }

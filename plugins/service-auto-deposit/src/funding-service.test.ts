@@ -10,6 +10,7 @@ function status(overrides: Partial<AutoDepositStatus>): AutoDepositStatus {
     looseBaseUnits: '0',
     strandedBaseUnits: '0',
     creditLimitBaseUnits: '0',
+    depositedBaseUnits: '0',
     lastDeposit: null,
     lastError: null,
     ...overrides,
@@ -46,5 +47,25 @@ describe('toServiceStatus', () => {
   it('mentions the wallet upgrade when idle and not yet delegated', () => {
     expect(toServiceStatus(status({ state: 'idle', delegated: false }), ADDRESS).summary)
       .toContain('upgrades on the first deposit');
+  });
+
+  it('reports null deposit limit before the credit limit is known', () => {
+    expect(toServiceStatus(status({ creditLimitBaseUnits: '0' }), ADDRESS).receiveLimitUsdc).toBeNull();
+  });
+
+  it('reports the live headroom (credit limit minus deposited) in USDC', () => {
+    const funding = toServiceStatus(
+      status({ creditLimitBaseUnits: '10000000', depositedBaseUnits: '2500000' }),
+      ADDRESS,
+    );
+    expect(funding.receiveLimitUsdc).toBe(7.5);
+  });
+
+  it('clamps the deposit limit to zero when already at the credit limit', () => {
+    const funding = toServiceStatus(
+      status({ creditLimitBaseUnits: '10000000', depositedBaseUnits: '10000000' }),
+      ADDRESS,
+    );
+    expect(funding.receiveLimitUsdc).toBe(0);
   });
 });

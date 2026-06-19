@@ -19,9 +19,6 @@ importers:
       '@antseed/api-adapter':
         specifier: workspace:*
         version: link:../../packages/api-adapter
-      '@antseed/auto-deposit':
-        specifier: workspace:*
-        version: link:../../packages/auto-deposit
       '@antseed/node':
         specifier: workspace:*
         version: link:../../packages/node
@@ -31,9 +28,6 @@ importers:
       '@antseed/provider-core':
         specifier: workspace:*
         version: link:../../packages/provider-core
-      '@antseed/service-core':
-        specifier: workspace:*
-        version: link:../../packages/service-core
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -441,25 +435,6 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
 
-  packages/auto-deposit:
-    dependencies:
-      '@antseed/service-core':
-        specifier: workspace:*
-        version: link:../service-core
-      permissionless:
-        specifier: ^0.3.6
-        version: 0.3.6(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6))
-      viem:
-        specifier: ^2.52.2
-        version: 2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
-    devDependencies:
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
-      vitest:
-        specifier: ^2.0.0
-        version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
-
   packages/node:
     dependencies:
       '@antseed/api-adapter':
@@ -534,6 +509,9 @@ importers:
 
   packages/service-core:
     devDependencies:
+      '@antseed/node':
+        specifier: workspace:*
+        version: link:../node
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -673,6 +651,28 @@ importers:
       '@antseed/router-core':
         specifier: workspace:*
         version: link:../../packages/router-core
+    devDependencies:
+      '@antseed/node':
+        specifier: workspace:*
+        version: link:../../packages/node
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
+
+  plugins/service-auto-deposit:
+    dependencies:
+      '@antseed/service-core':
+        specifier: workspace:*
+        version: link:../../packages/service-core
+      permissionless:
+        specifier: ^0.3.6
+        version: 0.3.6(viem@2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6))
+      viem:
+        specifier: ^2.52.2
+        version: 2.52.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
     devDependencies:
       '@antseed/node':
         specifier: workspace:*

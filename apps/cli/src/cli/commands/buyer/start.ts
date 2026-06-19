@@ -13,8 +13,8 @@ import { OFFICIAL_BOOTSTRAP_NODES, parseBootstrapList, toBootstrapConfig } from 
 import { setupShutdownHandler } from '../../shutdown.js'
 import { loadRouterPlugin, buildPluginConfig, getPackageVersions } from '../../../plugins/loader.js'
 import { ensurePluginsUpToDate } from '../../../plugins/drift.js'
-import { resolvePluginPackage } from '../../../plugins/registry.js'
-import { SERVICE_PLUGINS } from '../../../plugins/services.js'
+import { getTrustedServicePlugins, resolvePluginPackage } from '../../../plugins/registry.js'
+import { loadTrustedServicePlugins } from '../../../plugins/services.js'
 import { BuyerProxy } from '../../../proxy/buyer-proxy.js'
 import { resolveEffectiveBuyerConfig, type BuyerRuntimeOverrides } from '../../../config/effective.js'
 import type { BuyerCLIConfig } from '../../../config/types.js'
@@ -393,6 +393,11 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
 
       const proxyPort = effectiveBuyerConfig.proxyPort
       const proxySpinner = ora(`Starting local proxy on port ${proxyPort}...`).start()
+      // Service plugins declare the capabilities they need (wallet, chain, ...).
+      // Today's services rely on payment settlement being configured, so only
+      // load them when settlement is on; with payments disabled, expose none.
+      // They install + load dynamically from the plugins dir, just like routers.
+      const servicePlugins = settlementEnabled ? await loadTrustedServicePlugins() : []
       const proxy = new BuyerProxy({
         port: proxyPort,
         node,
@@ -401,9 +406,14 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
         backgroundRefreshIntervalMs: effectiveBuyerConfig.peerRefreshIntervalMs,
         chainConfig,
         configPath: globalOpts.config,
-        // Service plugins (e.g. auto-deposit) move on-chain funds, so only run
-        // them when settlement is on. With payments disabled, expose none.
-        servicePlugins: settlementEnabled ? SERVICE_PLUGINS : [],
+        servicePlugins,
+        // Full catalog so the control plane can list trusted services that did
+        // not load (not installed, no network) as "available", not just the
+        // live ones. Lets the desktop show every service with a toggle.
+        serviceCatalog: getTrustedServicePlugins().map((plugin) => ({
+          name: plugin.name,
+          description: plugin.description,
+        })),
         serviceConsent: Object.fromEntries(
           Object.entries(config.buyer.services ?? {}).map(([name, value]) => [name, value?.enabled === true]),
         ),

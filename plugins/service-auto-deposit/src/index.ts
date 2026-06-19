@@ -12,5 +12,5 @@ export {
   toServiceStatus,
 } from './factory.js';
 export { AUTO_DEPOSIT_CHAINS, type AutoDepositChainConfig } from './chains.js';
-export type { FundingHost, FundingChainContext } from './funding-host.js';
-export { autoDepositPlugin } from './plugin.js';
+export type { FundingChainContext } from './chain-context.js';
+export { autoDepositPlugin, default } from './plugin.js';

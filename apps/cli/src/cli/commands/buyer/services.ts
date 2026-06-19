@@ -2,10 +2,10 @@ import type { Command } from 'commander';
 import chalk from 'chalk';
 import { getGlobalOptions } from '../types.js';
 import { loadConfig, saveConfig } from '../../../config/loader.js';
-import { SERVICE_PLUGINS } from '../../../plugins/services.js';
+import { getTrustedServicePlugins } from '../../../plugins/registry.js';
 
 function availableNames(): string {
-  return SERVICE_PLUGINS.map((plugin) => plugin.name).join(', ') || '(none)';
+  return getTrustedServicePlugins().map((plugin) => plugin.name).join(', ') || '(none)';
 }
 
 export function registerBuyerServiceCommands(buyerCmd: Command): void {
@@ -13,7 +13,7 @@ export function registerBuyerServiceCommands(buyerCmd: Command): void {
     .command('enable-service <name>')
     .description(`Approve a service plugin so it runs while the buyer proxy is up. Available: ${availableNames()}`)
     .action(async (name: string) => {
-      const plugin = SERVICE_PLUGINS.find((candidate) => candidate.name === name);
+      const plugin = getTrustedServicePlugins().find((candidate) => candidate.name === name);
       if (!plugin) {
         console.error(chalk.red(`Unknown service plugin "${name}". Available: ${availableNames()}`));
         process.exit(1);
@@ -35,7 +35,7 @@ export function registerBuyerServiceCommands(buyerCmd: Command): void {
     .command('disable-service <name>')
     .description('Stop a service plugin (consent only; any on-chain state, e.g. an EIP-7702 delegation, persists)')
     .action(async (name: string) => {
-      const plugin = SERVICE_PLUGINS.find((candidate) => candidate.name === name);
+      const plugin = getTrustedServicePlugins().find((candidate) => candidate.name === name);
       if (!plugin) {
         console.error(chalk.red(`Unknown service plugin "${name}". Available: ${availableNames()}`));
         process.exit(1);

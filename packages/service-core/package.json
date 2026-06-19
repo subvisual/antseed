@@ -1,7 +1,7 @@
 {
   "name": "@antseed/service-core",
   "version": "0.1.0",
-  "description": "Shared contract for Antseed host-driven service plugins",
+  "description": "Shared infrastructure for Antseed host-driven service plugins",
   "type": "module",
   "files": [
     "dist"
@@ -18,7 +18,11 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "@antseed/node": ">=0.1.0"
+  },
   "devDependencies": {
+    "@antseed/node": "workspace:*",
     "typescript": "^5.5.0"
   }
 }

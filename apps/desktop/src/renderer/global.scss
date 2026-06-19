@@ -874,6 +874,12 @@ select.form-input {
   border: 1px solid rgba(var(--danger-rgb), 0.2);
 }
 
+.settings-message.warning {
+  background: rgba(187, 128, 9, 0.1);
+  color: #d29922;
+  border: 1px solid rgba(187, 128, 9, 0.28);
+}
+
 .settings-footer {
   display: grid;
   gap: 12px;
@@ -888,9 +894,42 @@ select.form-input {
   color: var(--text-secondary);
 }
 
-/* Funding service status line: separate it from the toggle row above. */
+/* Service status line: separate it from the toggle row above. */
 .settings-service-status {
   margin-top: 8px;
+}
+
+.settings-service + .settings-service {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.settings-service-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.settings-service-badge.is-active {
+  background: rgba(46, 160, 67, 0.18);
+  color: #3fb950;
+}
+
+.settings-service-badge.is-inactive {
+  background: rgba(187, 128, 9, 0.18);
+  color: #d29922;
+}
+
+.settings-service-badge.is-missing {
+  background: rgba(110, 118, 129, 0.18);
+  color: var(--text-secondary);
 }
 
 .settings-receive {

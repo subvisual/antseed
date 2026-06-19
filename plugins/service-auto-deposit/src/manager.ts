@@ -7,7 +7,7 @@
 import { debugLog, debugWarn } from './debug.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 45_000;
-const DEFAULT_DUST_FLOOR = 500_000n;   // 0.5 USDC — at/above this we consider depositing
+const DEFAULT_DUST_FLOOR = 500_000n;   // 0.5 USDC; at/above this we consider depositing
 const DEFAULT_GAS_RESERVE = 500_000n;  // 0.5 USDC kept back for the paymaster's gas pull
 const DEFAULT_MIN_DEPOSIT = 1_000_000n;  // AntseedDeposits MIN_BUYER_DEPOSIT (first deposit only)
 const DEFAULT_BACKOFF_BASE_MS = 30_000;
@@ -54,6 +54,7 @@ export interface AutoDepositStatus {
   looseBaseUnits: string;
   strandedBaseUnits: string;
   creditLimitBaseUnits: string;
+  depositedBaseUnits: string;
   lastDeposit: { txHash: string; amountBaseUnits: string; at: string } | null;
   lastError: string | null;
 }
@@ -118,6 +119,7 @@ export class AutoDepositManager {
   private _loose = 0n;
   private _stranded = 0n;
   private _creditLimit = 0n;
+  private _deposited = 0n;
   private _lastDeposit: AutoDepositStatus['lastDeposit'] = null;
   private _lastError: string | null = null;
   private _backoffMs: number;
@@ -167,6 +169,7 @@ export class AutoDepositManager {
       looseBaseUnits: this._loose.toString(),
       strandedBaseUnits: this._stranded.toString(),
       creditLimitBaseUnits: this._creditLimit.toString(),
+      depositedBaseUnits: this._deposited.toString(),
       lastDeposit: this._lastDeposit,
       lastError: this._lastError,
     };
@@ -202,10 +205,11 @@ export class AutoDepositManager {
       }
       this._loose = loose;
       this._creditLimit = creditLimit;
+      this._deposited = deposited;
 
       // Circuit breaker: stay paused on a deterministic failure until inputs change
       // in a way worth retrying. A loose DECREASE is just the failed op's own gas
-      // burn (a mined revert still pays USDC gas) — retrying would burn more — so
+      // burn (a mined revert still pays USDC gas); retrying would burn more, so
       // only a loose INCREASE (new funds) or a credit-limit/deposited change reopens it.
       if (
         this._state === 'needs_attention' &&

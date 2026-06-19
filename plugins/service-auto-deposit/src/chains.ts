@@ -6,7 +6,7 @@ export interface AutoDepositChainConfig {
   delegateAddress: string;
 }
 
-// EntryPoint v0.8 + Simple7702Account v0.8 — canonical singletons, same on every chain.
+// EntryPoint v0.8 + Simple7702Account v0.8: canonical singletons, same on every chain.
 const ENTRY_POINT_V08 = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108';
 const SIMPLE_7702_ACCOUNT_V08 = '0xe6Cae83BdE06E4c305530e199D7217f42808555B';
 

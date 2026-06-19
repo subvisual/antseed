@@ -3,11 +3,10 @@ import { randomUUID } from 'node:crypto'
 import { watchFile, unwatchFile } from 'node:fs'
 import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AntseedServicePlugin, Service, ServiceHost } from '@antseed/service-core'
-import type { FundingHost } from '@antseed/auto-deposit'
 import {
   computeOnChainReputationScore,
   type AntseedNode,
+  type AntseedServicePlugin,
   type ChainConfig,
   type PeerInfo,
   type PeerMetadata,
@@ -16,6 +15,10 @@ import {
   type SerializedHttpRequest,
   type SerializedHttpResponse,
   type SerializedHttpResponseChunk,
+  type Service,
+  type ServiceCapabilities,
+  type ServiceCapability,
+  type ServiceHost,
 } from '@antseed/node'
 import {
   createOpenAIChatToAnthropicStreamingAdapter,
@@ -83,7 +86,20 @@ export interface BuyerProxyConfig {
   chainConfig?: ChainConfig
   configPath?: string
   servicePlugins?: AntseedServicePlugin[]
+  /**
+   * Trusted service plugins the buyer knows about, whether or not they loaded.
+   * Used to list services that are available but not currently running (not
+   * installed, missing capability) so they can still be shown and toggled.
+   */
+  serviceCatalog?: ServiceCatalogEntry[]
   serviceConsent?: Record<string, boolean>
+}
+
+export interface ServiceCatalogEntry {
+  name: string
+  displayName?: string
+  kind?: string
+  description?: string
 }
 
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504])
@@ -399,6 +415,10 @@ export class BuyerProxy {
   private readonly _chainConfig?: ChainConfig
   private readonly _configPath?: string
   private readonly _servicePlugins: AntseedServicePlugin[]
+  private readonly _serviceCatalog: ServiceCatalogEntry[]
+  // Why a loaded plugin did not start (missing capability, declined). Keyed by
+  // plugin name; absent when the service is live or never loaded.
+  private _serviceInactiveReason: Map<string, string> = new Map()
   private _services: Map<string, Service> = new Map()
   private _serviceConsent: Record<string, boolean>
   private _peerFailures: Map<string, PeerFailureEntry> = new Map()
@@ -414,6 +434,7 @@ export class BuyerProxy {
     this._chainConfig = config.chainConfig
     this._configPath = config.configPath
     this._servicePlugins = config.servicePlugins ?? []
+    this._serviceCatalog = config.serviceCatalog ?? []
     this._serviceConsent = { ...(config.serviceConsent ?? {}) }
     this._server = createServer((req, res) => {
       this._handleRequest(req, res).catch((err) => {
@@ -590,35 +611,74 @@ export class BuyerProxy {
 
   private async _startServices(): Promise<void> {
     for (const plugin of this._servicePlugins) {
-      const host = this._buildServiceHost(plugin)
-      if (!host) continue
-      const service = await plugin.createService(host)
-      if (!service) continue
-      this._services.set(plugin.name, service)
-      service.start()
+      // One misbehaving plugin must not abort the rest or escape as an
+      // unhandled rejection (this runs detached during startup).
+      try {
+        const host = this._buildServiceHost(plugin)
+        if (!host) {
+          this._serviceInactiveReason.set(
+            plugin.name,
+            'Required capability unavailable (wallet/chain not configured).',
+          )
+          continue
+        }
+        const service = await plugin.createService(host)
+        if (!service) {
+          this._serviceInactiveReason.set(plugin.name, 'Service is not applicable on this network.')
+          continue
+        }
+        this._serviceInactiveReason.delete(plugin.name)
+        this._services.set(plugin.name, service)
+        service.start()
+      } catch (err) {
+        const cause = err instanceof Error ? err.message : String(err)
+        this._serviceInactiveReason.set(plugin.name, `Failed to start: ${cause}`)
+        log(`[service:${plugin.name}] failed to start:`, cause)
+      }
     }
   }
 
-  // Build the host for a service plugin. Capabilities are granted per kind, so
-  // only services that need the wallet key receive it. Consent lives in
-  // config.json (buyer.services[name]); the proxy holds the live value and the
-  // control endpoint persists changes.
+  // Build the host for a service plugin. The plugin declares the capabilities
+  // it needs (e.g. 'wallet', 'chain') and we grant only those, so a service
+  // never receives a capability it didn't ask for. A plugin whose required
+  // capability is unavailable (no chain config / no identity) gets no host and
+  // is skipped. Consent lives in config.json (buyer.services[name]); the proxy
+  // holds the live value and the control endpoint persists changes.
   private _buildServiceHost(plugin: AntseedServicePlugin): ServiceHost | null {
     const consent = { isEnabled: () => this._serviceConsent[plugin.name] ?? false }
     const onAttention = (message: string) => log(`[service:${plugin.name}] needs attention:`, message)
-    if (plugin.kind === 'funding') {
-      const chain = this._chainConfig
-      const identity = this._node.identity
-      if (!chain || !identity) return null
-      const fundingHost: FundingHost = {
-        consent,
-        onAttention,
-        privateKey: identity.wallet.privateKey as `0x${string}`,
-        chain,
-      }
-      return fundingHost
+    const capabilities: ServiceCapabilities = {}
+    for (const capability of plugin.capabilities ?? []) {
+      const granted = this._grantServiceCapability(capability)
+      if (!granted) return null
+      Object.assign(capabilities, granted)
     }
-    return { consent, onAttention }
+    return { consent, onAttention, capabilities }
+  }
+
+  // Resolve one declared capability from the resources the proxy owns. Returns
+  // null when the capability can't be granted (so the service is skipped) or is
+  // unknown to this host. Keyed on the capability, not the plugin, so the proxy
+  // stays agnostic to which concrete services exist.
+  private _grantServiceCapability(capability: ServiceCapability): Partial<ServiceCapabilities> | null {
+    switch (capability) {
+      case 'wallet': {
+        const identity = this._node.identity
+        if (!identity) return null
+        return {
+          wallet: {
+            privateKey: identity.wallet.privateKey as `0x${string}`,
+            address: identity.wallet.address as `0x${string}`,
+          },
+        }
+      }
+      case 'chain': {
+        if (!this._chainConfig) return null
+        return { chain: this._chainConfig }
+      }
+      default:
+        return null
+    }
   }
 
   private async _persistServiceConsent(name: string, enabled: boolean): Promise<void> {
@@ -935,15 +995,38 @@ export class BuyerProxy {
         res.end(JSON.stringify({ ok: false, error: 'Forbidden' }))
         return
       }
-      const services = this._servicePlugins
-        .filter((plugin) => this._services.has(plugin.name))
-        .map((plugin) => ({
-          name: plugin.name,
-          kind: plugin.kind,
-          displayName: plugin.displayName,
-          description: plugin.description,
-          status: this._services.get(plugin.name)!.getStatus(),
-        }))
+      const names = new Set<string>()
+      for (const entry of this._serviceCatalog) names.add(entry.name)
+      for (const plugin of this._servicePlugins) names.add(plugin.name)
+
+      const services = [...names].map((name) => {
+        const plugin = this._servicePlugins.find((candidate) => candidate.name === name)
+        const catalog = this._serviceCatalog.find((entry) => entry.name === name)
+        const live = this._services.get(name)
+        const installed = Boolean(plugin)
+        const active = Boolean(live)
+        const enabled = this._serviceConsent[name] ?? false
+        const status = live
+          ? live.getStatus()
+          : {
+              enabled,
+              attention: false,
+              summary: installed
+                ? this._serviceInactiveReason.get(name) ?? 'Installed but not running.'
+                : 'Not installed yet. It is set up on the next app launch.',
+              receiveAddress: null,
+            }
+        return {
+          name,
+          kind: plugin?.kind ?? catalog?.kind,
+          displayName: plugin?.displayName ?? catalog?.displayName ?? name,
+          description: plugin?.description ?? catalog?.description ?? '',
+          installed,
+          active,
+          enabled,
+          status,
+        }
+      })
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true, services }))
       return
@@ -983,8 +1066,10 @@ export class BuyerProxy {
         res.end(JSON.stringify({ ok: false, error: 'Body must be {"name": string, "enabled": boolean}' }))
         return
       }
-      const service = this._services.get(name)
-      if (!service) {
+      const isKnown =
+        this._servicePlugins.some((plugin) => plugin.name === name) ||
+        this._serviceCatalog.some((entry) => entry.name === name)
+      if (!isKnown) {
         res.writeHead(409, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: false, error: `Service plugin "${name}" is not available` }))
         return
@@ -998,10 +1083,12 @@ export class BuyerProxy {
         return
       }
       this._serviceConsent[name] = enabled
-      // re-evaluate immediately so a freshly-funded wallet acts without waiting a tick
-      if (enabled) void service.poke?.()
+      // A live service reacts now; one that is not running yet picks up the
+      // persisted consent on the next buyer start.
+      const service = this._services.get(name)
+      if (enabled && service) void service.poke?.()
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, name, enabled }))
+      res.end(JSON.stringify({ ok: true, name, enabled, active: Boolean(service) }))
       return
     }
 

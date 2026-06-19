@@ -1,6 +1,6 @@
 export interface TrustedPlugin {
   name: string
-  type: 'provider' | 'router'
+  type: 'provider' | 'router' | 'service'
   description: string
   package: string
 }
@@ -48,9 +48,19 @@ export const TRUSTED_PLUGINS: TrustedPlugin[] = [
     description: 'Local router for Claude Code, Codex',
     package: '@antseed/router-local',
   },
+  {
+    name: 'auto-deposit',
+    type: 'service',
+    description: 'Gasless auto-deposit: sweeps loose USDC into the network (Circle Paymaster + EIP-7702)',
+    package: '@antseed/service-auto-deposit',
+  },
 ]
 
 export function resolvePluginPackage(nameOrPackage: string): string {
   const trusted = TRUSTED_PLUGINS.find((plugin) => plugin.name === nameOrPackage)
   return trusted?.package ?? nameOrPackage
+}
+
+export function getTrustedServicePlugins(): TrustedPlugin[] {
+  return TRUSTED_PLUGINS.filter((plugin) => plugin.type === 'service')
 }

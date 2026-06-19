@@ -20,7 +20,7 @@ function resolveViemChain(evmChainId: number, rpcUrl: string): Chain {
   });
 }
 
-/** 1 USDC (6 decimals) — default cap the paymaster may pull for gas per op. */
+/** 1 USDC (6 decimals): default cap the paymaster may pull for gas per op. */
 const DEFAULT_MAX_GAS_USDC = 1_000_000n;
 
 const DEPOSITS_ABI = [
@@ -80,7 +80,7 @@ export interface GaslessDepositResult {
 }
 
 /**
- * Deposits USDC into AntseedDeposits with **no ETH** — gas is paid in USDC via the
+ * Deposits USDC into AntseedDeposits with **no ETH**: gas is paid in USDC via the
  * Circle Paymaster, and the buyer's plain EOA is upgraded in place with EIP-7702.
  * The first deposit carries the delegation; later deposits are plain sponsored ops.
  *
@@ -116,7 +116,7 @@ export class GaslessDepositsClient {
     return this._owner.address;
   }
 
-  // Delegated specifically to OUR Simple7702Account — a delegation to any other
+  // Delegated specifically to OUR Simple7702Account; a delegation to any other
   // target means the account runs unknown code, so we must (re)attach the
   // authorization on the next op rather than send a UserOp it can't validate.
   async isDelegated(): Promise<boolean> {

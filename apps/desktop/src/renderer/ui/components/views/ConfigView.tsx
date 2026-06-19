@@ -26,6 +26,7 @@ type ServiceStatus = {
   attention: boolean;
   summary: string;
   receiveAddress?: string | null;
+  receiveLimitUsdc?: number | null;
 };
 
 type ServicePluginView = {
@@ -33,6 +34,9 @@ type ServicePluginView = {
   kind?: string;
   displayName: string;
   description: string;
+  installed?: boolean;
+  active?: boolean;
+  enabled?: boolean;
   status: ServiceStatus;
 };
 
@@ -42,6 +46,10 @@ function isServiceList(value: unknown): value is ServicePluginView[] {
     const status = record && typeof record.status === 'object' ? record.status as Record<string, unknown> : null;
     return Boolean(record && typeof record.name === 'string' && status && typeof status.enabled === 'boolean');
   });
+}
+
+function formatUsdc(amount: number): string {
+  return String(Math.round(amount * 100) / 100);
 }
 
 function chainLabel(chainId: string): string {
@@ -181,10 +189,6 @@ export function ConfigView({ active }: ConfigViewProps) {
     } catch { /* will auto-start on next request */ }
   }
 
-  // The Funding panel only shows funding-kind services; other service kinds get
-  // their own sections when they exist.
-  const fundingServices = services.filter((plugin) => plugin.kind === 'funding');
-
   return (
     <section className={`view${active ? ' active' : ''}`} role="tabpanel">
       <div className="page-header">
@@ -263,38 +267,60 @@ export function ConfigView({ active }: ConfigViewProps) {
 
         <article className="panel settings-panel">
           <div className="panel-head">
-            <h3>Funding</h3>
+            <h3>Services</h3>
           </div>
           <div className="settings-stack">
-            {fundingServices.length === 0 ? (
-              <p className="settings-note">No funding options are available on this network.</p>
-            ) : fundingServices.map((plugin) => (
-              <div key={plugin.name}>
+            {services.length === 0 ? (
+              <p className="settings-note">No services available.</p>
+            ) : services.map((plugin) => {
+              const enabled = plugin.enabled ?? plugin.status.enabled;
+              const active = plugin.active ?? false;
+              const installed = plugin.installed ?? true;
+              const stateLabel = active ? 'Active' : installed ? 'Inactive' : 'Not installed';
+              const stateClass = active ? 'is-active' : installed ? 'is-inactive' : 'is-missing';
+              return (
+              <div key={plugin.name} className="settings-service">
                 <div className="settings-item">
                   <div className="settings-copy">
-                    <h4>{plugin.displayName}</h4>
+                    <h4>
+                      {plugin.displayName}
+                      <span className={`settings-service-badge ${stateClass}`}>{stateLabel}</span>
+                    </h4>
                     <p>{plugin.description}</p>
                   </div>
                   <button
                     type="button"
-                    className={`settings-switch${plugin.status.enabled ? ' is-on' : ''}`}
-                    aria-pressed={plugin.status.enabled}
-                    onClick={() => void toggleService(plugin.name, !plugin.status.enabled)}
+                    className={`settings-switch${enabled ? ' is-on' : ''}`}
+                    aria-pressed={enabled}
+                    onClick={() => void toggleService(plugin.name, !enabled)}
                     disabled={serviceBusy === plugin.name}
                   >
                     <span className="settings-switch-track">
                       <span className="settings-switch-thumb" />
                     </span>
-                    <span className="settings-switch-label">{plugin.status.enabled ? 'On' : 'Off'}</span>
+                    <span className="settings-switch-label">{enabled ? 'On' : 'Off'}</span>
                   </button>
                 </div>
-                {plugin.status.enabled && plugin.status.summary ? (
+                {enabled && !active ? (
+                  <p className="settings-note settings-service-status">Enabled. It will start the next time the buyer runs.</p>
+                ) : plugin.status.summary ? (
                   plugin.status.attention
                     ? <p className="settings-message error settings-service-status">{plugin.status.summary}</p>
                     : <p className="settings-note settings-service-status">{plugin.status.summary}</p>
                 ) : null}
-                {plugin.status.enabled && plugin.status.receiveAddress ? (
+                {enabled && active && plugin.status.receiveAddress ? (
                   <div className="settings-receive">
+                    <p className="settings-message warning">
+                      {typeof plugin.status.receiveLimitUsdc === 'number' ? (
+                        <>
+                          <strong>Do not send more than {formatUsdc(plugin.status.receiveLimitUsdc)} USDC.</strong> That is your current deposit limit; anything above it stays in your wallet.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Deposits are capped.</strong> Sending more than your current deposit limit leaves the excess in your wallet.
+                        </>
+                      )}
+                    </p>
                     <p className="settings-note">
                       Send USDC on {chainLabel(chainId)} to this address to fund your wallet. Only send USDC on {chainLabel(chainId)}; other tokens or chains may be lost.
                     </p>
@@ -314,7 +340,8 @@ export function ConfigView({ active }: ConfigViewProps) {
                   </div>
                 ) : null}
               </div>
-            ))}
+              );
+            })}
             {serviceMessage ? <p className="settings-note">{serviceMessage}</p> : null}
           </div>
         </article>

@@ -1,9 +1,8 @@
 import { getAddress, type Hex } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
 import { GaslessDepositsClient, type GaslessDepositsConfig } from './gasless-deposits-client.js';
 import { AUTO_DEPOSIT_CHAINS } from './chains.js';
-import type { Service, ServiceStatus } from '@antseed/service-core';
-import type { FundingChainContext, FundingHost } from './funding-host.js';
+import { requireChain, requireWallet, type Service, type ServiceHost, type ServiceStatus } from '@antseed/service-core';
+import type { FundingChainContext } from './chain-context.js';
 import {
   AutoDepositManager,
   type AutoDepositConsentView,
@@ -80,27 +79,44 @@ function summarize(status: AutoDepositStatus): string {
   }
 }
 
+const USDC_DECIMALS = 1_000_000;
+
 export function toServiceStatus(status: AutoDepositStatus, receiveAddress: string): ServiceStatus {
   return {
     enabled: status.enabled,
     attention: status.state === 'needs_attention',
     summary: summarize(status),
     receiveAddress,
+    receiveLimitUsdc: depositHeadroomUsdc(status),
   };
 }
 
+/** Live on-chain credit-limit headroom (creditLimit - deposited) in USDC, or
+ * null before the first successful read (creditLimit still 0). Beyond this the
+ * deposit reverts and the excess stays loose in the wallet. */
+function depositHeadroomUsdc(status: AutoDepositStatus): number | null {
+  const creditLimit = BigInt(status.creditLimitBaseUnits);
+  if (creditLimit <= 0n) return null;
+  const deposited = BigInt(status.depositedBaseUnits);
+  const headroom = creditLimit > deposited ? creditLimit - deposited : 0n;
+  return Number(headroom) / USDC_DECIMALS;
+}
+
 /** Build the auto-deposit {@link Service}, or null when the chain is not
- * gasless-capable. Wraps the manager and maps its rich status to the generic
+ * gasless-capable. Reads the wallet + chain capabilities the plugin declared,
+ * wraps the manager, and maps its rich status to the generic
  * {@link ServiceStatus} the desktop renders. */
-export function createAutoDepositService(host: FundingHost): Service | null {
+export function createAutoDepositService(host: ServiceHost): Service | null {
+  const wallet = requireWallet(host);
+  const chain = requireChain(host);
   const manager = createAutoDepositManager({
-    chain: host.chain,
-    privateKey: host.privateKey,
+    chain,
+    privateKey: wallet.privateKey,
     consent: host.consent,
     onAttention: host.onAttention,
   });
   if (!manager) return null;
-  const receiveAddress = privateKeyToAccount(host.privateKey).address;
+  const receiveAddress = wallet.address;
   return {
     start: () => manager.start(),
     stop: () => manager.stop(),

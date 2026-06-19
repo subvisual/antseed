@@ -26,8 +26,6 @@
   "dependencies": {
     "@antseed/api-adapter": "workspace:*",
     "@antseed/ant-agent": "workspace:*",
-    "@antseed/auto-deposit": "workspace:*",
-    "@antseed/service-core": "workspace:*",
     "@antseed/payments": "workspace:*",
     "@antseed/node": "workspace:*",
     "@antseed/provider-core": "workspace:*",
