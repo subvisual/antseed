@@ -21,21 +21,22 @@ function isVoiceModelStatus(value: unknown): value is VoiceModelStatus {
   return Boolean(record && Array.isArray(record.models));
 }
 
-type FundingStatus = {
+type ServiceStatus = {
   enabled: boolean;
   attention: boolean;
   summary: string;
   receiveAddress?: string | null;
 };
 
-type FundingPluginView = {
+type ServicePluginView = {
   name: string;
+  kind?: string;
   displayName: string;
   description: string;
-  status: FundingStatus;
+  status: ServiceStatus;
 };
 
-function isFundingList(value: unknown): value is FundingPluginView[] {
+function isServiceList(value: unknown): value is ServicePluginView[] {
   return Array.isArray(value) && value.every((item) => {
     const record = item && typeof item === 'object' ? item as Record<string, unknown> : null;
     const status = record && typeof record.status === 'object' ? record.status as Record<string, unknown> : null;
@@ -61,9 +62,9 @@ export function ConfigView({ active }: ConfigViewProps) {
   const [voiceStatus, setVoiceStatus] = useState<VoiceModelStatus | null>(null);
   const [voiceInstalling, setVoiceInstalling] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState<string | null>(null);
-  const [funding, setFunding] = useState<FundingPluginView[]>([]);
-  const [fundingBusy, setFundingBusy] = useState<string | null>(null);
-  const [fundingMessage, setFundingMessage] = useState<string | null>(null);
+  const [services, setServices] = useState<ServicePluginView[]>([]);
+  const [serviceBusy, setServiceBusy] = useState<string | null>(null);
+  const [serviceMessage, setServiceMessage] = useState<string | null>(null);
 
   // Sync from config on first load only
   const [initialized, setInitialized] = useState(false);
@@ -87,25 +88,25 @@ export function ConfigView({ active }: ConfigViewProps) {
     if (active) void refreshVoiceStatus();
   }, [active, refreshVoiceStatus]);
 
-  const refreshFunding = useCallback(async () => {
+  const refreshServices = useCallback(async () => {
     const result = await window.antseedDesktop?.apiTryProxyRequest?.({
       port: parseInt(proxyPort, 10) || 8377,
-      path: '/_antseed/funding',
+      path: '/_antseed/services',
       method: 'GET', headers: {}, body: '',
     });
     if (!result?.ok) return;
     try {
-      const data = JSON.parse(result.body) as { funding?: unknown };
-      if (isFundingList(data.funding)) setFunding(data.funding);
+      const data = JSON.parse(result.body) as { services?: unknown };
+      if (isServiceList(data.services)) setServices(data.services);
     } catch { /* ignore transient poll/parse errors */ }
   }, [proxyPort]);
 
   useEffect(() => {
     if (!active) return;
-    void refreshFunding();
-    const timer = setInterval(() => void refreshFunding(), 5000);
+    void refreshServices();
+    const timer = setInterval(() => void refreshServices(), 5000);
     return () => clearInterval(timer);
-  }, [active, refreshFunding]);
+  }, [active, refreshServices]);
 
   async function handleVoiceModelChange(modelId: string) {
     setVoiceMessage(null);
@@ -132,13 +133,13 @@ export function ConfigView({ active }: ConfigViewProps) {
     }
   }
 
-  async function toggleFunding(name: string, enabled: boolean) {
-    setFundingBusy(name);
-    setFundingMessage(null);
+  async function toggleService(name: string, enabled: boolean) {
+    setServiceBusy(name);
+    setServiceMessage(null);
     try {
       const result = await window.antseedDesktop?.apiTryProxyRequest?.({
         port: parseInt(proxyPort, 10) || 8377,
-        path: '/_antseed/funding',
+        path: '/_antseed/services',
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, enabled }),
@@ -146,11 +147,11 @@ export function ConfigView({ active }: ConfigViewProps) {
       if (!result?.ok) throw new Error(result?.error || `Request failed (${result?.status ?? 0})`);
       const data = JSON.parse(result.body) as { ok?: boolean; error?: string };
       if (!data.ok) throw new Error(data.error || 'Request rejected');
-      await refreshFunding();
+      await refreshServices();
     } catch (error) {
-      setFundingMessage(error instanceof Error ? error.message : String(error));
+      setServiceMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setFundingBusy(null);
+      setServiceBusy(null);
     }
   }
 
@@ -179,6 +180,10 @@ export function ConfigView({ active }: ConfigViewProps) {
       await actions.startConnect();
     } catch { /* will auto-start on next request */ }
   }
+
+  // The Funding panel only shows funding-kind services; other service kinds get
+  // their own sections when they exist.
+  const fundingServices = services.filter((plugin) => plugin.kind === 'funding');
 
   return (
     <section className={`view${active ? ' active' : ''}`} role="tabpanel">
@@ -261,9 +266,9 @@ export function ConfigView({ active }: ConfigViewProps) {
             <h3>Funding</h3>
           </div>
           <div className="settings-stack">
-            {funding.length === 0 ? (
+            {fundingServices.length === 0 ? (
               <p className="settings-note">No funding options are available on this network.</p>
-            ) : funding.map((plugin) => (
+            ) : fundingServices.map((plugin) => (
               <div key={plugin.name}>
                 <div className="settings-item">
                   <div className="settings-copy">
@@ -274,8 +279,8 @@ export function ConfigView({ active }: ConfigViewProps) {
                     type="button"
                     className={`settings-switch${plugin.status.enabled ? ' is-on' : ''}`}
                     aria-pressed={plugin.status.enabled}
-                    onClick={() => void toggleFunding(plugin.name, !plugin.status.enabled)}
-                    disabled={fundingBusy === plugin.name}
+                    onClick={() => void toggleService(plugin.name, !plugin.status.enabled)}
+                    disabled={serviceBusy === plugin.name}
                   >
                     <span className="settings-switch-track">
                       <span className="settings-switch-thumb" />
@@ -283,10 +288,10 @@ export function ConfigView({ active }: ConfigViewProps) {
                     <span className="settings-switch-label">{plugin.status.enabled ? 'On' : 'Off'}</span>
                   </button>
                 </div>
-                {plugin.status.enabled ? (
+                {plugin.status.enabled && plugin.status.summary ? (
                   plugin.status.attention
-                    ? <p className="settings-message error">{plugin.status.summary}</p>
-                    : <p className="settings-note">{plugin.status.summary}</p>
+                    ? <p className="settings-message error settings-service-status">{plugin.status.summary}</p>
+                    : <p className="settings-note settings-service-status">{plugin.status.summary}</p>
                 ) : null}
                 {plugin.status.enabled && plugin.status.receiveAddress ? (
                   <div className="settings-receive">
@@ -310,7 +315,7 @@ export function ConfigView({ active }: ConfigViewProps) {
                 ) : null}
               </div>
             ))}
-            {fundingMessage ? <p className="settings-note">{fundingMessage}</p> : null}
+            {serviceMessage ? <p className="settings-note">{serviceMessage}</p> : null}
           </div>
         </article>
 

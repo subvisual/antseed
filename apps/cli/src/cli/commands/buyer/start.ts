@@ -14,7 +14,7 @@ import { setupShutdownHandler } from '../../shutdown.js'
 import { loadRouterPlugin, buildPluginConfig, getPackageVersions } from '../../../plugins/loader.js'
 import { ensurePluginsUpToDate } from '../../../plugins/drift.js'
 import { resolvePluginPackage } from '../../../plugins/registry.js'
-import { FUNDING_PLUGINS } from '../../../plugins/funding.js'
+import { SERVICE_PLUGINS } from '../../../plugins/services.js'
 import { BuyerProxy } from '../../../proxy/buyer-proxy.js'
 import { resolveEffectiveBuyerConfig, type BuyerRuntimeOverrides } from '../../../config/effective.js'
 import type { BuyerCLIConfig } from '../../../config/types.js'
@@ -401,9 +401,9 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
         backgroundRefreshIntervalMs: effectiveBuyerConfig.peerRefreshIntervalMs,
         chainConfig,
         configPath: globalOpts.config,
-        fundingPlugins: FUNDING_PLUGINS,
-        fundingConsent: Object.fromEntries(
-          Object.entries(config.buyer.funding ?? {}).map(([name, value]) => [name, value?.enabled === true]),
+        servicePlugins: SERVICE_PLUGINS,
+        serviceConsent: Object.fromEntries(
+          Object.entries(config.buyer.services ?? {}).map(([name, value]) => [name, value?.enabled === true]),
         ),
       })
       let ownsProxyListener = false

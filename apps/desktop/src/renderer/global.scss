@@ -888,10 +888,16 @@ select.form-input {
   color: var(--text-secondary);
 }
 
+/* Funding service status line: separate it from the toggle row above. */
+.settings-service-status {
+  margin-top: 8px;
+}
+
 .settings-receive {
   display: grid;
   gap: 12px;
   justify-items: start;
+  margin-top: 12px;
 }
 
 .settings-receive-address {

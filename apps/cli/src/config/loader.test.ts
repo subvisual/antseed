@@ -140,14 +140,14 @@ test('loadConfig preserves buyer verification sampling settings', async () => {
   );
 });
 
-test('loadConfig preserves buyer.funding consent map', async () => {
+test('loadConfig preserves buyer.services consent map', async () => {
   await withTempConfig(
     JSON.stringify({
-      buyer: { funding: { 'auto-deposit': { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' } } },
+      buyer: { services: { 'auto-deposit': { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' } } },
     }),
     async (configPath) => {
       const config = await loadConfig(configPath);
-      assert.deepEqual(config.buyer.funding?.['auto-deposit'], { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' });
+      assert.deepEqual(config.buyer.services?.['auto-deposit'], { enabled: true, approvedAt: '2026-06-15T00:00:00.000Z' });
     }
   );
 });
@@ -170,13 +170,13 @@ test('loadConfig rejects invalid buyer verification sampleRate', async () => {
   );
 });
 
-test('loadConfig drops malformed buyer.funding entries but keeps valid ones', async () => {
+test('loadConfig drops malformed buyer.services entries but keeps valid ones', async () => {
   await withTempConfig(
-    JSON.stringify({ buyer: { funding: { 'auto-deposit': { enabled: 'yes' }, other: { enabled: false } } } }),
+    JSON.stringify({ buyer: { services: { 'auto-deposit': { enabled: 'yes' }, other: { enabled: false } } } }),
     async (configPath) => {
       const config = await loadConfig(configPath);
-      assert.equal(config.buyer.funding?.['auto-deposit'], undefined);
-      assert.deepEqual(config.buyer.funding?.other, { enabled: false });
+      assert.equal(config.buyer.services?.['auto-deposit'], undefined);
+      assert.deepEqual(config.buyer.services?.other, { enabled: false });
     }
   );
 });

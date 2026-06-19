@@ -7,16 +7,10 @@ export type {
 } from './manager.js';
 export {
   createAutoDepositManager,
-  createAutoDepositFundingService,
+  createAutoDepositService,
   gaslessConfigFromChain,
-  toFundingStatus,
+  toServiceStatus,
 } from './factory.js';
 export { AUTO_DEPOSIT_CHAINS, type AutoDepositChainConfig } from './chains.js';
-export type {
-  AntseedFundingPlugin,
-  FundingHost,
-  FundingService,
-  FundingStatus,
-  FundingChainContext,
-} from './funding-plugin.js';
+export type { FundingHost, FundingChainContext } from './funding-host.js';
 export { autoDepositPlugin } from './plugin.js';

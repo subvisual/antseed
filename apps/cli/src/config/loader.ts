@@ -364,11 +364,11 @@ function mergeBuyerConfig(
       ? value['metadataFetchTimeoutMs']
       : defaults.metadataFetchTimeoutMs,
     ...(normalizeBuyerVerification(value['verification'], defaults.verification)),
-    ...(normalizeBuyerFunding(value['funding'])),
+    ...(normalizeBuyerServices(value['services'])),
   };
 }
 
-function normalizeFundingEntry(entry: unknown): { enabled: boolean; approvedAt?: string } | null {
+function normalizeServiceEntry(entry: unknown): { enabled: boolean; approvedAt?: string } | null {
   if (!isRecord(entry) || typeof entry['enabled'] !== 'boolean') return null;
   return {
     enabled: entry['enabled'],
@@ -376,16 +376,16 @@ function normalizeFundingEntry(entry: unknown): { enabled: boolean; approvedAt?:
   };
 }
 
-function normalizeBuyerFunding(
-  fundingValue: unknown,
-): { funding: NonNullable<AntseedConfig['buyer']['funding']> } | Record<string, never> {
-  if (!isRecord(fundingValue)) return {};
+function normalizeBuyerServices(
+  servicesValue: unknown,
+): { services: NonNullable<AntseedConfig['buyer']['services']> } | Record<string, never> {
+  if (!isRecord(servicesValue)) return {};
   const out: Record<string, { enabled: boolean; approvedAt?: string }> = {};
-  for (const [name, entry] of Object.entries(fundingValue)) {
-    const normalized = normalizeFundingEntry(entry);
+  for (const [name, entry] of Object.entries(servicesValue)) {
+    const normalized = normalizeServiceEntry(entry);
     if (normalized) out[name] = normalized;
   }
-  return Object.keys(out).length > 0 ? { funding: out } : {};
+  return Object.keys(out).length > 0 ? { services: out } : {};
 }
 
 /**

@@ -38,8 +38,8 @@ Instead of depositing by hand, you can let your node do it. With auto-deposit on
 Turn it on from the CLI:
 
 ```bash
-antseed buyer enable-funding auto-deposit
-antseed buyer disable-funding auto-deposit
+antseed buyer enable-service auto-deposit
+antseed buyer disable-service auto-deposit
 ```
 
 In AntStation, open Settings and use the toggle in the Funding panel. When it is on, the panel shows your wallet address and a QR code so you can send USDC straight to it from an exchange or another wallet.

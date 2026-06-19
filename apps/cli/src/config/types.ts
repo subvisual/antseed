@@ -143,8 +143,8 @@ export interface BuyerCLIConfig {
   metadataFetchTimeoutMs: number;
   /** Buyer-side response-auth evidence sampling settings. */
   verification?: BuyerVerificationConfig;
-  /** Per-funding-plugin consent, keyed by plugin name (e.g. "auto-deposit"). */
-  funding?: Record<string, { enabled: boolean; approvedAt?: string }>;
+  /** Per-service-plugin consent, keyed by plugin name (e.g. "auto-deposit"). */
+  services?: Record<string, { enabled: boolean; approvedAt?: string }>;
 }
 
 /**

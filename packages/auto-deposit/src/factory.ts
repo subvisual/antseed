@@ -2,12 +2,8 @@ import { getAddress, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { GaslessDepositsClient, type GaslessDepositsConfig } from './gasless-deposits-client.js';
 import { AUTO_DEPOSIT_CHAINS } from './chains.js';
-import type {
-  FundingChainContext,
-  FundingHost,
-  FundingService,
-  FundingStatus,
-} from './funding-plugin.js';
+import type { Service, ServiceStatus } from '@antseed/service-core';
+import type { FundingChainContext, FundingHost } from './funding-host.js';
 import {
   AutoDepositManager,
   type AutoDepositConsentView,
@@ -79,12 +75,12 @@ function summarize(status: AutoDepositStatus): string {
     case 'backoff': return 'Retrying…';
     case 'pending': return 'Depositing…';
     case 'stranded': return `${formatUsdc(status.strandedBaseUnits)} USDC waiting (credit limit reached; deposits resume as it grows)`;
-    case 'idle': return status.delegated ? 'Active' : 'Active. Your wallet upgrades on the first deposit';
-    default: return 'Active';
+    case 'idle': return status.delegated ? '' : 'Your wallet upgrades on the first deposit';
+    default: return '';
   }
 }
 
-export function toFundingStatus(status: AutoDepositStatus, receiveAddress: string): FundingStatus {
+export function toServiceStatus(status: AutoDepositStatus, receiveAddress: string): ServiceStatus {
   return {
     enabled: status.enabled,
     attention: status.state === 'needs_attention',
@@ -93,10 +89,10 @@ export function toFundingStatus(status: AutoDepositStatus, receiveAddress: strin
   };
 }
 
-/** Build the auto-deposit {@link FundingService}, or null when the chain is not
+/** Build the auto-deposit {@link Service}, or null when the chain is not
  * gasless-capable. Wraps the manager and maps its rich status to the generic
- * {@link FundingStatus} the desktop renders. */
-export function createAutoDepositFundingService(host: FundingHost): FundingService | null {
+ * {@link ServiceStatus} the desktop renders. */
+export function createAutoDepositService(host: FundingHost): Service | null {
   const manager = createAutoDepositManager({
     chain: host.chain,
     privateKey: host.privateKey,
@@ -109,6 +105,6 @@ export function createAutoDepositFundingService(host: FundingHost): FundingServi
     start: () => manager.start(),
     stop: () => manager.stop(),
     poke: () => manager.runOnce(),
-    getStatus: () => toFundingStatus(manager.getStatus(), receiveAddress),
+    getStatus: () => toServiceStatus(manager.getStatus(), receiveAddress),
   };
 }

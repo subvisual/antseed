@@ -20,6 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@antseed/service-core": "workspace:*",
     "permissionless": "^0.3.6",
     "viem": "^2.52.2"
   },
