@@ -3,6 +3,10 @@ export interface TrustedPlugin {
   type: 'provider' | 'router' | 'service'
   description: string
   package: string
+  /** Human-readable label shown in UIs before the plugin is loaded. */
+  displayName?: string
+  /** Service sub-kind (e.g. 'funding'), surfaced for services not yet loaded. */
+  kind?: string
 }
 
 export const TRUSTED_PLUGINS: TrustedPlugin[] = [
@@ -51,6 +55,8 @@ export const TRUSTED_PLUGINS: TrustedPlugin[] = [
   {
     name: 'auto-deposit',
     type: 'service',
+    displayName: 'Auto Deposit',
+    kind: 'funding',
     description: 'Gasless auto-deposit: sweeps loose USDC into the network (Circle Paymaster + EIP-7702)',
     package: '@antseed/service-auto-deposit',
   },

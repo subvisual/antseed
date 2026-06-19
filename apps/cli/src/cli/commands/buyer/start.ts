@@ -412,6 +412,8 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
         // live ones. Lets the desktop show every service with a toggle.
         serviceCatalog: getTrustedServicePlugins().map((plugin) => ({
           name: plugin.name,
+          displayName: plugin.displayName,
+          kind: plugin.kind,
           description: plugin.description,
         })),
         serviceConsent: Object.fromEntries(
