@@ -928,6 +928,13 @@ export class BuyerProxy {
     }
 
     if (path === '/_antseed/services' && method === 'GET') {
+      // Local control-plane data (exposes the wallet receive address); restrict
+      // to genuine loopback callers, same as the mutating POST below.
+      if (!isLoopbackControlRequest(req)) {
+        res.writeHead(403, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ ok: false, error: 'Forbidden' }))
+        return
+      }
       const services = this._servicePlugins
         .filter((plugin) => this._services.has(plugin.name))
         .map((plugin) => ({

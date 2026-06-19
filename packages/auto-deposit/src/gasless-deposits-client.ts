@@ -166,7 +166,9 @@ export class GaslessDepositsClient {
       ...(authorization ? { authorization } : {}),
     });
 
-    const receipt = await bundler.waitForUserOperationReceipt({ hash: userOpHash });
+    // Bound the wait: if the bundler accepts the op but it never mines, time out
+    // (a transient error upstream) rather than leaving the manager stuck in-flight.
+    const receipt = await bundler.waitForUserOperationReceipt({ hash: userOpHash, timeout: 120_000 });
     // A UserOp can be mined yet revert (success === false), e.g. the inner deposit
     // hits CreditLimitExceeded. Throw so callers don't record a phantom deposit and
     // retry-spin (the "revert" keyword routes it to the circuit breaker upstream).

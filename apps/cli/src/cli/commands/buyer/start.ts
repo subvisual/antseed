@@ -401,7 +401,9 @@ export function registerBuyerStartCommand(buyerCmd: Command): void {
         backgroundRefreshIntervalMs: effectiveBuyerConfig.peerRefreshIntervalMs,
         chainConfig,
         configPath: globalOpts.config,
-        servicePlugins: SERVICE_PLUGINS,
+        // Service plugins (e.g. auto-deposit) move on-chain funds, so only run
+        // them when settlement is on. With payments disabled, expose none.
+        servicePlugins: settlementEnabled ? SERVICE_PLUGINS : [],
         serviceConsent: Object.fromEntries(
           Object.entries(config.buyer.services ?? {}).map(([name, value]) => [name, value?.enabled === true]),
         ),
