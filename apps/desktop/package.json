@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@antseed/api-adapter": "workspace:*",
+    "@antseed/connect-core": "workspace:*",
     "@antseed/node": "workspace:*",
     "@antseed/payments": "workspace:*",
     "@antseed/ui": "workspace:*",

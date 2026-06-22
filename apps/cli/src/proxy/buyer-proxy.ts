@@ -644,6 +644,54 @@ export class BuyerProxy {
   // capability is unavailable (no chain config / no identity) gets no host and
   // is skipped. Consent lives in config.json (buyer.services[name]); the proxy
   // holds the live value and the control endpoint persists changes.
+  /** Normalized view of every known service, shared by GET /_antseed/services
+   * and {@link getFundingStatus}. */
+  private _listServices() {
+    const names = new Set<string>()
+    for (const entry of this._serviceCatalog) names.add(entry.name)
+    for (const plugin of this._servicePlugins) names.add(plugin.name)
+
+    return [...names].map((name) => {
+      const plugin = this._servicePlugins.find((candidate) => candidate.name === name)
+      const catalog = this._serviceCatalog.find((entry) => entry.name === name)
+      const live = this._services.get(name)
+      const installed = Boolean(plugin)
+      const active = Boolean(live)
+      const enabled = this._serviceConsent[name] ?? false
+      const status = live
+        ? live.getStatus()
+        : {
+            enabled,
+            attention: false,
+            summary: installed
+              ? this._serviceInactiveReason.get(name) ?? 'Installed but not running.'
+              : 'Not installed yet. It is set up on the next app launch.',
+            receiveAddress: null,
+          }
+      return {
+        name,
+        kind: plugin?.kind ?? catalog?.kind,
+        displayName: plugin?.displayName ?? catalog?.displayName ?? name,
+        description: plugin?.description ?? catalog?.description ?? '',
+        installed,
+        active,
+        enabled,
+        status,
+      }
+    })
+  }
+
+  /** Live funding-service state for the Connect auto_deposit scope. Null when no
+   * funding service is registered. */
+  getFundingStatus(): { enabled: boolean; receiveLimitUsdc: number | null } | null {
+    const funding = this._listServices().find((entry) => entry.kind === 'funding')
+    if (!funding) return null
+    return {
+      enabled: funding.active && funding.status.enabled,
+      receiveLimitUsdc: funding.status.receiveLimitUsdc ?? null,
+    }
+  }
+
   private _buildServiceHost(plugin: AntseedServicePlugin): ServiceHost | null {
     const consent = { isEnabled: () => this._serviceConsent[plugin.name] ?? false }
     const onAttention = (message: string) => log(`[service:${plugin.name}] needs attention:`, message)
@@ -995,38 +1043,7 @@ export class BuyerProxy {
         res.end(JSON.stringify({ ok: false, error: 'Forbidden' }))
         return
       }
-      const names = new Set<string>()
-      for (const entry of this._serviceCatalog) names.add(entry.name)
-      for (const plugin of this._servicePlugins) names.add(plugin.name)
-
-      const services = [...names].map((name) => {
-        const plugin = this._servicePlugins.find((candidate) => candidate.name === name)
-        const catalog = this._serviceCatalog.find((entry) => entry.name === name)
-        const live = this._services.get(name)
-        const installed = Boolean(plugin)
-        const active = Boolean(live)
-        const enabled = this._serviceConsent[name] ?? false
-        const status = live
-          ? live.getStatus()
-          : {
-              enabled,
-              attention: false,
-              summary: installed
-                ? this._serviceInactiveReason.get(name) ?? 'Installed but not running.'
-                : 'Not installed yet. It is set up on the next app launch.',
-              receiveAddress: null,
-            }
-        return {
-          name,
-          kind: plugin?.kind ?? catalog?.kind,
-          displayName: plugin?.displayName ?? catalog?.displayName ?? name,
-          description: plugin?.description ?? catalog?.description ?? '',
-          installed,
-          active,
-          enabled,
-          status,
-        }
-      })
+      const services = this._listServices()
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true, services }))
       return

@@ -20,6 +20,7 @@ import {
 } from './process-manager.js';
 import { registerPiChatHandlers, invalidateOnChainEnrichmentCache } from './pi-chat-engine.js';
 import { ensureSecureIdentity, secureIdentityEnv, getSecureIdentity } from './identity.js';
+import { initConnectDeepLink, markConnectReady, type ConnectDeps } from './connect.js';
 import { DepositsClient, signSpendingAuth, makeChannelsDomain, resolveChainConfig, formatUsdc, peerIdToAddress } from '@antseed/node';
 import { createServer as createPaymentsServer } from '@antseed/payments';
 import type { LogEvent, RuntimeActivityEvent } from './log-parser.js';
@@ -251,6 +252,39 @@ async function requestBuyerPeerRefresh(): Promise<void> {
     }
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`Unable to refresh peers via buyer proxy on port ${port}: ${message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getAutoDepositContext(): Promise<
+  { enabled: boolean; receiveLimitUsdc: number | null } | null
+> {
+  const port = await resolveBuyerProxyPort();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1_500);
+  try {
+    const response = await fetch(`${LOCALHOST_URL}:${port}/_antseed/services`, {
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      ok?: boolean;
+      services?: Array<{
+        kind?: string;
+        active?: boolean;
+        status?: { enabled?: boolean; receiveLimitUsdc?: number | null };
+      }>;
+    };
+    if (body.ok !== true || !Array.isArray(body.services)) return null;
+    const funding = body.services.find((entry) => entry.kind === 'funding');
+    if (!funding) return null;
+    return {
+      enabled: Boolean(funding.active) && Boolean(funding.status?.enabled),
+      receiveLimitUsdc: funding.status?.receiveLimitUsdc ?? null,
+    };
+  } catch {
+    return null;
   } finally {
     clearTimeout(timer);
   }
@@ -1001,6 +1035,23 @@ ipcMain.handle('runtime:scan-network', async () => {
   }
 });
 
+const connectDeps: ConnectDeps = {
+  getMainWindow,
+  ensureWindow: () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow({ appName: APP_NAME, appIconPath: APP_ICON_PATH, isDev, rendererUrl });
+    }
+  },
+  ensureIdentity: ensureSecureIdentity,
+  getIdentity: getSecureIdentity,
+  getAutoDepositContext,
+  log: (line) => appendLog('connect', 'system', line),
+};
+
+// Register the antseed:// open-url listener before app ready so a cold-start
+// launch from a deep link is caught and buffered.
+initConnectDeepLink(connectDeps);
+
 app.whenReady().then(async () => {
   installAttachmentProtocol();
   app.setName(APP_NAME);
@@ -1021,6 +1072,10 @@ app.whenReady().then(async () => {
   await ensureConfig(ACTIVE_CONFIG_PATH).catch(() => {});
 
   createWindow({ appName: APP_NAME, appIconPath: APP_ICON_PATH, isDev, rendererUrl });
+
+  // Window exists and identity preload is kicked off below: flush any deep links
+  // that arrived during cold start.
+  markConnectReady(connectDeps);
 
   // Pre-load identity from encrypted store so it's ready before the first CLI spawn.
   void ensureSecureIdentity().catch(() => {

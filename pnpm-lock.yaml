@@ -19,6 +19,9 @@ importers:
       '@antseed/api-adapter':
         specifier: workspace:*
         version: link:../../packages/api-adapter
+      '@antseed/connect-core':
+        specifier: workspace:*
+        version: link:../../packages/connect-core
       '@antseed/node':
         specifier: workspace:*
         version: link:../../packages/node
@@ -62,6 +65,9 @@ importers:
       '@antseed/api-adapter':
         specifier: workspace:*
         version: link:../../packages/api-adapter
+      '@antseed/connect-core':
+        specifier: workspace:*
+        version: link:../../packages/connect-core
       '@antseed/node':
         specifier: workspace:*
         version: link:../../packages/node
@@ -427,6 +433,19 @@ importers:
         version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
 
   packages/api-adapter:
+    devDependencies:
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.7.5)(sass@1.97.3)(terser@5.46.0)
+
+  packages/connect-core:
+    dependencies:
+      ethers:
+        specifier: ~6.16.0
+        version: 6.16.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     devDependencies:
       typescript:
         specifier: ^5.5.0
