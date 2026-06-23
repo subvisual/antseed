@@ -1,0 +1,342 @@
+@import 'tailwindcss';
+
+/* ===================================================================
+   AntSeed Funding — design tokens ported from the desktop app
+   (apps/desktop/src/renderer/global.scss). Light theme is the default;
+   dark follows the OS, mirroring the app's two themes.
+   =================================================================== */
+
+:root {
+  --bg-primary: #f5f5f1;
+  --bg-secondary: #fafaf6;
+  --bg-card: #ffffff;
+  --bg-card-alt: #fcfcf8;
+  --bg-surface: #ebebe7;
+  --text-primary: #0f0f0e;
+  --text-secondary: #4a4a48;
+  --text-muted: #9a9a96;
+  --accent: #1fd87a;
+  --accent-fg: #04150c;
+  --danger: #ef4444;
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --accent-rgb: 31, 216, 122;
+  --danger-rgb: 239, 68, 68;
+
+  --font-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --radius: 16px;
+  --radius-sm: 8px;
+  --shadow: 0px 16px 60px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0px 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1c1c1e;
+    --bg-secondary: #222224;
+    --bg-card: #2a2a2c;
+    --bg-card-alt: #252527;
+    --bg-surface: #2f2f31;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #8b949e;
+    --accent: #1fd87a;
+    --accent-fg: #04150c;
+    --danger: #ff7b72;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --danger-rgb: 255, 123, 114;
+    --shadow: 0px 8px 40px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0px 1px 3px rgba(0, 0, 0, 0.3);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===================================================================
+   Login screen (step 1) — centered, mirrors the desktop SetupScreen
+   =================================================================== */
+
+.login {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 14vh 20px 0;
+  gap: 0;
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 24px;
+  opacity: 0.95;
+}
+
+.login-title {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.login-sub {
+  margin: 0 0 28px;
+  max-width: 300px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ===================================================================
+   Steps hint  ( 1 Login · 2 Connect · 3 Fund )
+   =================================================================== */
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 28px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.step {
+  white-space: nowrap;
+}
+
+.step.active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.step.done {
+  color: var(--accent);
+}
+
+.step-sep {
+  opacity: 0.5;
+}
+
+/* ===================================================================
+   Signed-in shell (steps 2-3)
+   =================================================================== */
+
+.shell {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  width: 24px;
+  height: 24px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.address {
+  display: block;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  padding: 12px 16px;
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.link {
+  align-self: flex-start;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  font-weight: 400;
+  font-size: 13px;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.success {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+footer.muted {
+  text-align: center;
+}
+
+/* ===================================================================
+   Buy flow (headless onramp): form fields, terms, payment iframe
+   =================================================================== */
+
+.buy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field > span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.field input {
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field input:read-only {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.terms input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.otp-row {
+  display: flex;
+  gap: 8px;
+}
+
+.otp-row input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.otp-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.otp-row button {
+  flex-shrink: 0;
+}
+
+.onramp-frame {
+  width: 100%;
+  height: 520px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-alt);
+}
