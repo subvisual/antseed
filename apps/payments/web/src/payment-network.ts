@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
-import { base, sepolia } from 'wagmi/chains';
+import { base } from 'wagmi/chains';
 import { useChainModal } from '@rainbow-me/rainbowkit';
 import type { PaymentConfig } from './types';
 
 const PAYMENT_CHAINS = {
   [base.id]: base,
-  [sepolia.id]: sepolia,
 } as const;
 
 export function getPaymentChainName(config: PaymentConfig | null): string {

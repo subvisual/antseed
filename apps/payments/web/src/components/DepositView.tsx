@@ -105,7 +105,7 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
       )}
 
       {activeTab === 'card' && moonpay ? (
-        <OnrampPanel moonpay={moonpay} />
+        <OnrampPanel moonpay={moonpay} evmAddress={config?.evmAddress ?? null} />
       ) : (
         <CryptoDeposit
           config={config}
@@ -118,22 +118,27 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
   );
 }
 
-function OnrampPanel({ moonpay }: { moonpay: MoonPayOnrampConfig }) {
-  const { address, isConnected } = useAccount();
-  const walletConnected = isConnected && Boolean(address);
+function OnrampPanel({
+  moonpay,
+  evmAddress,
+}: {
+  moonpay: MoonPayOnrampConfig;
+  evmAddress: string | null;
+}) {
+  const hasAddress = Boolean(evmAddress);
   const [amount, setAmount] = useState('');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
-    if (!address) return;
+    if (!evmAddress) return;
     try {
-      await navigator.clipboard.writeText(address);
+      await navigator.clipboard.writeText(evmAddress);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
-  }, [address]);
+  }, [evmAddress]);
 
   const handleContinue = useCallback(() => {
     const url = new URL(moonpay.baseUrl);
@@ -169,7 +174,7 @@ function OnrampPanel({ moonpay }: { moonpay: MoonPayOnrampConfig }) {
 
       <div className="dv-amount-block">
         <label className="dv-amount-label" htmlFor="dv-onramp-address">
-          Your wallet address
+          Your AntSeed wallet address
         </label>
         <div className="dv-amount-field">
           <input
@@ -178,33 +183,33 @@ function OnrampPanel({ moonpay }: { moonpay: MoonPayOnrampConfig }) {
             type="text"
             readOnly
             spellCheck={false}
-            value={address ?? ''}
-            placeholder="Connect a wallet"
+            value={evmAddress ?? ''}
+            placeholder="Wallet address unavailable"
           />
           <button
             type="button"
             className={`dv-chip${copied ? ' dv-chip--active' : ''}`}
             onClick={handleCopy}
-            disabled={!walletConnected}
+            disabled={!hasAddress}
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
         <div className="dv-wallet-hint">
-          Paste this address into MoonPay so the test USDC lands in your wallet.
+          Paste this address into MoonPay so the test USDC lands in your AntSeed wallet.
         </div>
       </div>
 
-      {!walletConnected && (
+      {!hasAddress && (
         <div className="dv-connect-hint">
-          Connect a wallet first so you have an address to receive the test USDC.
+          Your AntSeed wallet address is unavailable. Restart the payments server and try again.
         </div>
       )}
 
       <button
         className="dv-btn-primary"
         onClick={handleContinue}
-        disabled={!walletConnected}
+        disabled={!hasAddress}
       >
         Continue with MoonPay
       </button>
