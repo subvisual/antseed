@@ -17,4 +17,15 @@ export interface PaymentConfig {
   antsTokenAddress: string | null;
   networkStatsUrl: string | null;
   evmAddress: string | null;
+  onramp: OnrampConfig | null;
+}
+
+export interface MoonPayOnrampConfig {
+  pk: string;
+  baseUrl: string;
+  currencyCode: string;
+}
+
+export interface OnrampConfig {
+  moonpay?: MoonPayOnrampConfig;
 }

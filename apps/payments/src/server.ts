@@ -71,6 +71,7 @@ export async function createServer(options: PaymentsServerOptions) {
 
   // Resolve chain config: protocol defaults + user overrides from config.json
   let userOverrides: Record<string, unknown> = {};
+  let onrampConfig: Record<string, unknown> | null = null;
   let proxyPort = 8377;
   try {
     const cfgPath = options.dataDir
@@ -80,6 +81,7 @@ export async function createServer(options: PaymentsServerOptions) {
     const config = JSON.parse(raw) as Record<string, unknown>;
     const payments = (config.payments ?? {}) as Record<string, unknown>;
     userOverrides = (payments.crypto ?? {}) as Record<string, unknown>;
+    onrampConfig = (payments.onramp ?? null) as Record<string, unknown> | null;
     const buyer = (config.buyer ?? {}) as Record<string, unknown>;
     if (typeof buyer.proxyPort === 'number') {
       proxyPort = buyer.proxyPort;
@@ -115,7 +117,7 @@ export async function createServer(options: PaymentsServerOptions) {
     usdcContractAddress: chainConfig.usdcContractAddress,
   };
 
-  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort });
+  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort, onramp: onrampConfig });
 
   // SPA fallback — only if static files are available
   if (staticRegistered) {

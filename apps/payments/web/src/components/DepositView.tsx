@@ -7,7 +7,7 @@ import {
   useReadContract,
 } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
-import type { BalanceData, PaymentConfig } from '../types';
+import type { BalanceData, MoonPayOnrampConfig, PaymentConfig } from '../types';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { formatAmountInput, formatUsd, parseUsd, truncateAddress } from '../utils/format';
 import { getExplorerTxUrl } from '../utils/txLink';
@@ -76,14 +76,142 @@ const ERC20_ABI = [
 ] as const;
 
 export function DepositView({ config, balance, buyerAddress, onDeposited }: DepositViewProps) {
+  const moonpay = config?.onramp?.moonpay ?? null;
+  const [tab, setTab] = useState<'crypto' | 'card'>('crypto');
+  const cardEnabled = Boolean(moonpay);
+  const activeTab = cardEnabled ? tab : 'crypto';
+
   return (
     <div className="dv">
-      <CryptoDeposit
-        config={config}
-        balance={balance}
-        buyerAddress={buyerAddress}
-        onDeposited={onDeposited}
-      />
+      {cardEnabled && (
+        <div className="dv-chips" role="tablist" aria-label="Deposit method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'crypto'}
+            className={`dv-chip${activeTab === 'crypto' ? ' dv-chip--active' : ''}`}
+            onClick={() => setTab('crypto')}
+          >
+            Crypto
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'card'}
+            className={`dv-chip${activeTab === 'card' ? ' dv-chip--active' : ''}`}
+            onClick={() => setTab('card')}
+          >
+            Card / Bank
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'card' && moonpay ? (
+        <OnrampPanel moonpay={moonpay} />
+      ) : (
+        <CryptoDeposit
+          config={config}
+          balance={balance}
+          buyerAddress={buyerAddress}
+          onDeposited={onDeposited}
+        />
+      )}
+    </div>
+  );
+}
+
+function OnrampPanel({ moonpay }: { moonpay: MoonPayOnrampConfig }) {
+  const { address, isConnected } = useAccount();
+  const walletConnected = isConnected && Boolean(address);
+  const [amount, setAmount] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }, [address]);
+
+  const handleContinue = useCallback(() => {
+    const base = moonpay.baseUrl.replace(/\/+$/, '');
+    const url = `${base}/?apiKey=${encodeURIComponent(moonpay.pk)}&currencyCode=${encodeURIComponent(moonpay.currencyCode)}${amount ? `&baseCurrencyAmount=${encodeURIComponent(amount)}` : ''}`;
+    window.open(url, '_blank');
+  }, [moonpay, amount]);
+
+  return (
+    <div className="dv-form">
+      <div className="dv-amount-block">
+        <label className="dv-amount-label" htmlFor="dv-onramp-amount">
+          Amount (optional)
+        </label>
+        <div className="dv-amount-field">
+          <span className="dv-amount-cur" aria-hidden="true">$</span>
+          <input
+            id="dv-onramp-amount"
+            className="dv-amount-input"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <span className="dv-amount-unit" aria-hidden="true">USD</span>
+        </div>
+      </div>
+
+      <div className="dv-amount-block">
+        <label className="dv-amount-label" htmlFor="dv-onramp-address">
+          Your wallet address
+        </label>
+        <div className="dv-amount-field">
+          <input
+            id="dv-onramp-address"
+            className="dv-amount-input"
+            type="text"
+            readOnly
+            spellCheck={false}
+            value={address ?? ''}
+            placeholder="Connect a wallet"
+          />
+          <button
+            type="button"
+            className={`dv-chip${copied ? ' dv-chip--active' : ''}`}
+            onClick={handleCopy}
+            disabled={!walletConnected}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <div className="dv-wallet-hint">
+          Paste this address into MoonPay so the test USDC lands in your wallet.
+        </div>
+      </div>
+
+      {!walletConnected && (
+        <div className="dv-connect-hint">
+          Connect a wallet first so you have an address to receive the test USDC.
+        </div>
+      )}
+
+      <button
+        className="dv-btn-primary"
+        onClick={handleContinue}
+        disabled={!walletConnected}
+      >
+        Continue with MoonPay
+      </button>
+
+      <div className="dv-help">
+        Paste your address into MoonPay → test USDC lands in your wallet → then use
+        the Crypto tab to deposit. Sandbox only: uses fake money for this proof of concept.
+      </div>
     </div>
   );
 }

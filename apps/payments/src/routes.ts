@@ -26,6 +26,7 @@ interface RouteContext {
   cryptoConfig: PaymentCryptoConfig;
   chainConfig: ChainConfig;
   proxyPort: number;
+  onramp?: unknown;
 }
 
 // Use shared utilities from @antseed/node
@@ -151,6 +152,7 @@ export function registerRoutes(fastify: FastifyInstance, ctx: RouteContext): voi
       antsTokenAddress: ctx.chainConfig.antsTokenAddress ?? null,
       networkStatsUrl: ctx.chainConfig.networkStatsUrl ?? null,
       evmAddress: ctx.cryptoCtx?.evmAddress ?? null,
+      onramp: ctx.onramp ?? null,
     };
   });
 

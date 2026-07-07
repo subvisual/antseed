@@ -1,5 +1,5 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { base } from 'wagmi/chains';
+import { base, sepolia } from 'wagmi/chains';
 import { http, fallback } from 'viem';
 
 // Fallback order was picked via a benchmark of the 3-concurrent-eth_call
@@ -18,12 +18,13 @@ import { http, fallback } from 'viem';
 export const wagmiConfig = getDefaultConfig({
   appName: 'AntSeed Payments',
   projectId: '9a1851410cb5589bc351a6dabf17140e',
-  chains: [base],
+  chains: [base, sepolia],
   transports: {
     [base.id]: fallback([
       http('https://base-rpc.publicnode.com'),
       http('https://base.gateway.tenderly.co'),
       http('https://base-public.nodies.app'),
     ]),
+    [sepolia.id]: http('https://ethereum-sepolia-rpc.publicnode.com'),
   },
 });
