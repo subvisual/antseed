@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { resolveChainConfig } from '@antseed/node';
-import { registerRoutes } from './routes.js';
+import { registerRoutes, sanitizeOnramp, type OnrampConfig } from './routes.js';
 import { loadCryptoContext, type CryptoContext, type PaymentCryptoConfig } from './crypto-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -71,7 +71,7 @@ export async function createServer(options: PaymentsServerOptions) {
 
   // Resolve chain config: protocol defaults + user overrides from config.json
   let userOverrides: Record<string, unknown> = {};
-  let onrampConfig: Record<string, unknown> | null = null;
+  let onrampConfig: OnrampConfig | null = null;
   let proxyPort = 8377;
   try {
     const cfgPath = options.dataDir
@@ -81,7 +81,7 @@ export async function createServer(options: PaymentsServerOptions) {
     const config = JSON.parse(raw) as Record<string, unknown>;
     const payments = (config.payments ?? {}) as Record<string, unknown>;
     userOverrides = (payments.crypto ?? {}) as Record<string, unknown>;
-    onrampConfig = (payments.onramp ?? null) as Record<string, unknown> | null;
+    onrampConfig = sanitizeOnramp(payments.onramp);
     const buyer = (config.buyer ?? {}) as Record<string, unknown>;
     if (typeof buyer.proxyPort === 'number') {
       proxyPort = buyer.proxyPort;

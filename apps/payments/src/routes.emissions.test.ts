@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
-import { registerRoutes } from './routes.js';
+import { registerRoutes, sanitizeOnramp } from './routes.js';
 
 function mockCtx(overrides: Partial<Parameters<typeof registerRoutes>[1]> = {}): Parameters<typeof registerRoutes>[1] {
   return {
@@ -61,6 +61,45 @@ describe('GET /api/config', () => {
     const res = await app.inject({ method: 'GET', url: '/api/config' });
     expect(res.json().networkStatsUrl).toBeNull();
     await app.close();
+  });
+
+  it('returns onramp: null by default', async () => {
+    const app = Fastify();
+    registerRoutes(app, mockCtx());
+    const res = await app.inject({ method: 'GET', url: '/api/config' });
+    expect(res.json().onramp).toBeNull();
+    await app.close();
+  });
+
+  it('returns the onramp config the context carries', async () => {
+    const app = Fastify();
+    const onramp = { moonpay: { publishableKey: 'pk_test_x', baseUrl: 'https://buy-sandbox.moonpay.com', currencyCode: 'usdc' } };
+    registerRoutes(app, mockCtx({ onramp }));
+    const res = await app.inject({ method: 'GET', url: '/api/config' });
+    expect(res.json().onramp).toEqual(onramp);
+    await app.close();
+  });
+});
+
+describe('sanitizeOnramp', () => {
+  const valid = { publishableKey: 'pk_test_x', baseUrl: 'https://buy-sandbox.moonpay.com', currencyCode: 'usdc' };
+
+  it('whitelists exactly pk/baseUrl/currencyCode, dropping extra fields', () => {
+    const result = sanitizeOnramp({ moonpay: { ...valid, secretKey: 'sk_test_leak', extra: 1 } });
+    expect(result).toEqual({ moonpay: valid });
+    expect((result!.moonpay as Record<string, unknown>).secretKey).toBeUndefined();
+  });
+
+  it.each([
+    ['null', null],
+    ['non-object', 'nope'],
+    ['empty object', {}],
+    ['missing moonpay fields', { moonpay: {} }],
+    ['partial moonpay', { moonpay: { publishableKey: 'pk_test_x' } }],
+    ['empty-string field', { moonpay: { ...valid, publishableKey: '' } }],
+    ['non-string field', { moonpay: { ...valid, publishableKey: 123 } }],
+  ])('returns null for %s', (_label, input) => {
+    expect(sanitizeOnramp(input)).toBeNull();
   });
 });
 

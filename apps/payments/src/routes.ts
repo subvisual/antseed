@@ -21,12 +21,29 @@ const EMPTY_BUYER_USAGE: BuyerUsageTotals = {
   channels: [],
 };
 
+export interface OnrampConfig {
+  moonpay: { publishableKey: string; baseUrl: string; currencyCode: string };
+}
+
 interface RouteContext {
   cryptoCtx: CryptoContext | null;
   cryptoConfig: PaymentCryptoConfig;
   chainConfig: ChainConfig;
   proxyPort: number;
-  onramp?: unknown;
+  onramp?: OnrampConfig | null;
+}
+
+// /api/config is unauthenticated — whitelist exactly the publishable MoonPay
+// fields so a stray secret (sk_*) or malformed shape in config.json can never
+// reach the browser. Returns null unless all three fields are non-empty strings.
+export function sanitizeOnramp(raw: unknown): OnrampConfig | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const moonpay = (raw as Record<string, unknown>).moonpay;
+  if (!moonpay || typeof moonpay !== 'object') return null;
+  const { publishableKey, baseUrl, currencyCode } = moonpay as Record<string, unknown>;
+  if (typeof publishableKey !== 'string' || typeof baseUrl !== 'string' || typeof currencyCode !== 'string') return null;
+  if (!publishableKey || !baseUrl || !currencyCode) return null;
+  return { moonpay: { publishableKey, baseUrl, currencyCode } };
 }
 
 // Use shared utilities from @antseed/node

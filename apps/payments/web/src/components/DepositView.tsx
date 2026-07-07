@@ -84,11 +84,10 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
   return (
     <div className="dv">
       {cardEnabled && (
-        <div className="dv-chips" role="tablist" aria-label="Deposit method">
+        <div className="dv-chips" role="group" aria-label="Deposit method">
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'crypto'}
+            aria-pressed={activeTab === 'crypto'}
             className={`dv-chip${activeTab === 'crypto' ? ' dv-chip--active' : ''}`}
             onClick={() => setTab('crypto')}
           >
@@ -96,8 +95,7 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={activeTab === 'card'}
+            aria-pressed={activeTab === 'card'}
             className={`dv-chip${activeTab === 'card' ? ' dv-chip--active' : ''}`}
             onClick={() => setTab('card')}
           >
@@ -138,9 +136,12 @@ function OnrampPanel({ moonpay }: { moonpay: MoonPayOnrampConfig }) {
   }, [address]);
 
   const handleContinue = useCallback(() => {
-    const base = moonpay.baseUrl.replace(/\/+$/, '');
-    const url = `${base}/?apiKey=${encodeURIComponent(moonpay.pk)}&currencyCode=${encodeURIComponent(moonpay.currencyCode)}${amount ? `&baseCurrencyAmount=${encodeURIComponent(amount)}` : ''}`;
-    window.open(url, '_blank');
+    const url = new URL(moonpay.baseUrl);
+    url.searchParams.set('apiKey', moonpay.publishableKey);
+    url.searchParams.set('currencyCode', moonpay.currencyCode);
+    const amt = Number(amount);
+    if (amt > 0) url.searchParams.set('baseCurrencyAmount', String(amt));
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
   }, [moonpay, amount]);
 
   return (

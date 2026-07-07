@@ -21,7 +21,7 @@ export interface PaymentConfig {
 }
 
 export interface MoonPayOnrampConfig {
-  pk: string;
+  publishableKey: string;
   baseUrl: string;
   currencyCode: string;
 }
