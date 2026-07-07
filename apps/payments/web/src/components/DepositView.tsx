@@ -215,8 +215,9 @@ function OnrampPanel({
       </button>
 
       <div className="dv-help">
-        Paste your address into MoonPay → test USDC lands in your wallet → then use
-        the Crypto tab to deposit. Sandbox only: uses fake money for this proof of concept.
+        Paste your address into MoonPay → test USDC lands in your AntSeed wallet →
+        your balance updates automatically once it's swept into your AntSeed balance.
+        Sandbox only: uses fake money for this test.
       </div>
     </div>
   );
