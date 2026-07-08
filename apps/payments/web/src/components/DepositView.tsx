@@ -259,6 +259,13 @@ function CoinbasePanel({
     if (!hasAddress) return;
     setLoading(true);
     setError(null);
+    // Open the tab synchronously, inside the click's user-activation window —
+    // otherwise popup blockers kill it once we're past the awaited network call.
+    // window.open(url, '_blank', 'noopener') returns null, so we can't keep a
+    // handle to navigate later; drop the feature string and neutralise the
+    // opener manually to preserve the reverse-tabnabbing protection.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
     try {
       const amt = Number(amount);
       const { sessionToken } = await createCoinbaseOnrampSession(amt > 0 ? amt : undefined);
@@ -272,8 +279,15 @@ function CoinbasePanel({
         url.searchParams.set('presetFiatAmount', String(amt));
         url.searchParams.set('fiatCurrency', 'USD');
       }
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      if (win) {
+        win.location.replace(url.toString());
+      } else {
+        // Placeholder tab was blocked (or unsupported); fall back to a direct
+        // open, which will likely also be blocked outside the gesture window.
+        window.open(url.toString(), '_blank', 'noreferrer');
+      }
     } catch (err) {
+      win?.close();
       setError(getErrorMessage(err, 'Could not start Coinbase. Please try again.'));
     } finally {
       setLoading(false);

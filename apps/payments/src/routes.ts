@@ -24,8 +24,7 @@ const EMPTY_BUYER_USAGE: BuyerUsageTotals = {
 
 export interface OnrampConfig {
   moonpay?: { publishableKey: string; baseUrl: string; currencyCode: string };
-  // Client-safe Coinbase projection — enable flag + sandbox routing only.
-  // NEVER carries key material (the CDP secret lives in server-only ctx.coinbase).
+  // Client-safe projection: enable flag + sandbox routing, never key material.
   coinbase?: { enabled: boolean; sandbox: boolean };
 }
 
@@ -62,8 +61,8 @@ export function sanitizeOnramp(
   const moonpay = sanitizeMoonPay(rawObj.moonpay);
   if (moonpay) config.moonpay = moonpay;
 
-  // Coinbase enablement is signalled purely by server-side env creds. config.json
-  // may add only the non-secret sandbox flag; any key-shaped fields are ignored.
+  // Enabled by server-side env creds only; config.json contributes just the
+  // non-secret sandbox flag. Key-shaped fields are ignored.
   if (opts.coinbaseEnabled) {
     const cb = rawObj.coinbase && typeof rawObj.coinbase === 'object'
       ? (rawObj.coinbase as Record<string, unknown>)
@@ -350,11 +349,9 @@ export function registerRoutes(fastify: FastifyInstance, ctx: RouteContext): voi
     }
   });
 
-  // Mint a Coinbase onramp session token. POST → inherits the session-bearer
-  // auth from server.ts (do NOT add to the GET skip-list). The destination
-  // address is the server identity wallet, never client-supplied. The CDP
-  // secret stays server-side; only the ephemeral session token is returned.
-  fastify.post('/api/onramp/coinbase/session', async (request, reply) => {
+  // POST inherits server.ts session-bearer auth (do NOT add to the GET skip-list).
+  // Address is the server identity wallet; the CDP secret never leaves the server.
+  fastify.post('/api/onramp/coinbase/session', async (_request, reply) => {
     if (!ctx.coinbase) {
       return reply.status(400).send({ ok: false, error: 'Coinbase onramp is not configured' });
     }
@@ -362,17 +359,15 @@ export function registerRoutes(fastify: FastifyInstance, ctx: RouteContext): voi
     if (!address) {
       return reply.status(400).send({ ok: false, error: 'Identity wallet unavailable' });
     }
-    const body = request.body as { amount?: number } | null;
     try {
       const { sessionToken } = await mintOnrampSession({
         apiKeyId: ctx.coinbase.apiKeyId,
         apiKeySecret: ctx.coinbase.apiKeySecret,
         address,
-        ...(typeof body?.amount === 'number' ? { amount: body.amount } : {}),
       });
       return { sessionToken };
     } catch (err) {
-      // Never echo the raw CDP error or credentials — log server-side, return generic.
+      // Log server-side; return generic — never echo the raw CDP error/creds.
       fastify.log.warn(`[onramp] Coinbase session mint failed: ${err instanceof Error ? err.message : String(err)}`);
       return reply.status(502).send({ ok: false, error: 'Failed to create Coinbase session' });
     }

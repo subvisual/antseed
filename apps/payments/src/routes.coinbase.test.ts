@@ -2,10 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import { registerRoutes, sanitizeOnramp } from './routes.js';
 
-// The mint route delegates to the pure, transport-agnostic mintOnrampSession()
-// so it can lift into a hosted Worker/Lambda unchanged. Replace only that export
-// with a spy — keep OnrampMintError / generateJwt real via importOriginal — so
-// the Fastify wrapper's happy/error mapping is exercised without hitting CDP.
+// Mock only mintOnrampSession (keep OnrampMintError/generateJwt real) so the
+// Fastify wrapper's happy/error mapping is tested without hitting CDP.
 vi.mock('./coinbase-onramp.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./coinbase-onramp.js')>();
   return { ...actual, mintOnrampSession: vi.fn() };
@@ -127,7 +125,6 @@ describe('POST /api/onramp/coinbase/session', () => {
 });
 
 describe('mintOnrampSession (pure)', () => {
-  // signJwt is injected so the pure fn is testable without a real EC key.
   const signJwt = vi.fn(async () => 'signed.jwt.token');
 
   it('signs a JWT, POSTs the CDP token endpoint, returns the session token', async () => {
@@ -163,6 +160,49 @@ describe('mintOnrampSession (pure)', () => {
       typeof import('./coinbase-onramp.js')
     >('./coinbase-onramp.js');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 401 })));
+
+    await expect(
+      realMint({ apiKeyId: 'id', apiKeySecret: 'secret-b64', address: '0x' + 'a'.repeat(40), signJwt }),
+    ).rejects.toBeInstanceOf(OnrampMintError);
+  });
+
+  it('wires an AbortSignal into the CDP fetch call', async () => {
+    const { mintOnrampSession: realMint } = await vi.importActual<
+      typeof import('./coinbase-onramp.js')
+    >('./coinbase-onramp.js');
+
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      return new Response(JSON.stringify({ token: 'ephemeral_xyz' }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await realMint({ apiKeyId: 'id', apiKeySecret: 'secret-b64', address: '0x' + 'a'.repeat(40), signJwt });
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('throws OnrampMintError("...timed out") when the CDP fetch aborts', async () => {
+    const { mintOnrampSession: realMint } = await vi.importActual<
+      typeof import('./coinbase-onramp.js')
+    >('./coinbase-onramp.js');
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }),
+    );
+
+    await expect(
+      realMint({ apiKeyId: 'id', apiKeySecret: 'secret-b64', address: '0x' + 'a'.repeat(40), signJwt }),
+    ).rejects.toThrow('CDP token request timed out');
+  });
+
+  it('throws OnrampMintError when the CDP response token is not a string', async () => {
+    const { mintOnrampSession: realMint } = await vi.importActual<
+      typeof import('./coinbase-onramp.js')
+    >('./coinbase-onramp.js');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ token: 123 }), { status: 200 })));
 
     await expect(
       realMint({ apiKeyId: 'id', apiKeySecret: 'secret-b64', address: '0x' + 'a'.repeat(40), signJwt }),
