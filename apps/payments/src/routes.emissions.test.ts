@@ -98,6 +98,11 @@ describe('sanitizeOnramp', () => {
     ['partial moonpay', { moonpay: { publishableKey: 'pk_test_x' } }],
     ['empty-string field', { moonpay: { ...valid, publishableKey: '' } }],
     ['non-string field', { moonpay: { ...valid, publishableKey: 123 } }],
+    ['secret key in publishableKey', { moonpay: { ...valid, publishableKey: 'sk_test_leak' } }],
+    ['non-pk publishableKey', { moonpay: { ...valid, publishableKey: 'test_x' } }],
+    ['malformed baseUrl', { moonpay: { ...valid, baseUrl: 'not a url' } }],
+    ['http baseUrl', { moonpay: { ...valid, baseUrl: 'http://buy-sandbox.moonpay.com' } }],
+    ['non-moonpay host', { moonpay: { ...valid, baseUrl: 'https://evil.example.com' } }],
   ])('returns null for %s', (_label, input) => {
     expect(sanitizeOnramp(input)).toBeNull();
   });

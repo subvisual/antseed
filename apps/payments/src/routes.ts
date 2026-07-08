@@ -35,7 +35,10 @@ interface RouteContext {
 
 // /api/config is unauthenticated — whitelist exactly the publishable MoonPay
 // fields so a stray secret (sk_*) or malformed shape in config.json can never
-// reach the browser. Returns null unless all three fields are non-empty strings.
+// reach the browser. Returns null unless all three fields are valid:
+//  - publishableKey must be a publishable key (pk_*), never a secret (sk_*)
+//  - baseUrl must be an https MoonPay URL (guards config-driven open redirect
+//    and a malformed URL throwing inside the browser's click handler)
 export function sanitizeOnramp(raw: unknown): OnrampConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const moonpay = (raw as Record<string, unknown>).moonpay;
@@ -43,7 +46,20 @@ export function sanitizeOnramp(raw: unknown): OnrampConfig | null {
   const { publishableKey, baseUrl, currencyCode } = moonpay as Record<string, unknown>;
   if (typeof publishableKey !== 'string' || typeof baseUrl !== 'string' || typeof currencyCode !== 'string') return null;
   if (!publishableKey || !baseUrl || !currencyCode) return null;
+  if (!publishableKey.startsWith('pk_')) return null;
+  if (!isMoonPayUrl(baseUrl)) return null;
   return { moonpay: { publishableKey, baseUrl, currencyCode } };
+}
+
+function isMoonPayUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  return url.hostname === 'moonpay.com' || url.hostname.endsWith('.moonpay.com');
 }
 
 // Use shared utilities from @antseed/node
