@@ -3,28 +3,52 @@ import { MoonPayBuyWidget } from '@moonpay/moonpay-react'
 
 import { activeChain } from '../lib/chain'
 import { signMoonpayUrlFn } from '../lib/moonpay-fn'
+import { CoinbaseFunds } from './CoinbaseFunds'
 
-// The in-app buy flow. MoonPay hosts the entire purchase — card / Apple Pay /
-// Google Pay, KYC, payment — and delivers USDC straight to the AntSeed address.
-// We only pick the amount and sign the widget URL (server-side, so the pinned
-// destination address can't be tampered with). No wallet, no deposit step.
-//
-// Lower bound is MoonPay's $20 minimum for a card purchase. We don't cap the
-// upper end (the on-chain credit limit isn't enforced in deliver-to-address mode);
-// MoonPay enforces its own per-transaction maximum and surfaces it in the widget.
+// The in-app buy flow. Two providers, gated behind a tab selector:
+// MoonPay (card / Apple Pay / Google Pay, hosted widget) or Coinbase
+// (Coinbase-managed headless onramp, Apple/Google Pay only). Both deliver
+// USDC straight to the AntSeed address; we only pick the amount and, for
+// MoonPay, sign the widget URL server-side so the destination can't be
+// tampered with.
 
 // MoonPay's minimum card purchase. Their floor, not an on-chain value — confirm
 // per currency via MoonPay's /v3/currencies if you ever need it dynamic.
 const MOONPAY_MIN_USD = 20
+const COINBASE_ENABLED = import.meta.env['VITE_COINBASE_ENABLED'] === 'true'
 
 interface AddFundsProps {
   /** Destination AntSeed address that receives the purchased USDC. */
   address: string
-  /** Fired when MoonPay reports the purchase completed. */
+  /** Fired when the provider reports the purchase completed. */
   onCompleted?: () => void
 }
 
 export function AddFunds({ address, onCompleted }: AddFundsProps) {
+  const [provider, setProvider] = useState<'moonpay' | 'coinbase'>('moonpay')
+
+  if (!COINBASE_ENABLED) return <MoonPayFunds address={address} onCompleted={onCompleted} />
+
+  return (
+    <div>
+      <div className="steps" role="group" aria-label="Payment provider">
+        <button className={`step ${provider === 'moonpay' ? 'active' : ''}`.trim()}
+          aria-pressed={provider === 'moonpay'} onClick={() => setProvider('moonpay')}>
+          MoonPay (card)
+        </button>
+        <button className={`step ${provider === 'coinbase' ? 'active' : ''}`.trim()}
+          aria-pressed={provider === 'coinbase'} onClick={() => setProvider('coinbase')}>
+          Coinbase (Apple/Google Pay)
+        </button>
+      </div>
+      {provider === 'moonpay'
+        ? <MoonPayFunds address={address} onCompleted={onCompleted} />
+        : <CoinbaseFunds address={address} onCompleted={onCompleted} />}
+    </div>
+  )
+}
+
+function MoonPayFunds({ address, onCompleted }: AddFundsProps) {
   const chain = activeChain()
   const [amount, setAmount] = useState(String(MOONPAY_MIN_USD))
   const [visible, setVisible] = useState(false)
@@ -64,6 +88,7 @@ export function AddFunds({ address, onCompleted }: AddFundsProps) {
         baseCurrencyCode="usd"
         baseCurrencyAmount={amountOk ? amountNum.toFixed(2) : undefined}
         defaultCurrencyCode={chain.moonpayCurrencyCode}
+        showOnlyCurrencies={chain.moonpayCurrencyCode}
         walletAddress={address}
         visible={visible}
         onUrlSignatureRequested={signUrl}

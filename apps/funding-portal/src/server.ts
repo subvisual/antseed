@@ -1,10 +1,11 @@
 import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
 import { assertMoonpayEnv } from './lib/moonpay-server'
+import { assertCoinbaseEnv } from './lib/coinbase-server'
 
-// Runs once at server startup: in production, throws (failing boot) if the
-// MoonPay secret is missing. No-op in development (placeholder) and during the
-// build's prerender step.
+// Runs once at server startup: in production, throws (failing boot) if onramp
+// secrets are misconfigured. No-op in development and during prerender.
 assertMoonpayEnv()
+assertCoinbaseEnv()
 
 export default createServerEntry({
   fetch(request) {

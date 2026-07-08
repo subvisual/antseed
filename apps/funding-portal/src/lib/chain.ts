@@ -20,6 +20,10 @@ export interface ChainInfo {
   depositsAddress: string
   /** MoonPay currency code for USDC on this network (e.g. "usdc_base"). */
   moonpayCurrencyCode: string
+  /** CDP onramp network name for USDC (buy-options `networks[].name`). */
+  coinbaseNetwork: string
+  /** CDP onramp purchase currency symbol. */
+  coinbasePurchaseCurrency: string
 }
 
 const CHAINS: Record<ChainId, ChainInfo> = {
@@ -29,6 +33,8 @@ const CHAINS: Record<ChainId, ChainInfo> = {
     rpcUrl: 'https://base.publicnode.com',
     depositsAddress: '0x0F7a3a8f4Da01637d1202bb5443fcF7F88F99fD2',
     moonpayCurrencyCode: 'usdc_base',
+    coinbaseNetwork: 'base',
+    coinbasePurchaseCurrency: 'USDC',
   },
   'base-sepolia': {
     chainId: 'base-sepolia',
@@ -38,6 +44,8 @@ const CHAINS: Record<ChainId, ChainInfo> = {
     // MoonPay sandbox delivers the testnet build of usdc_base when the widget
     // runs with a pk_test_ key; the same currency code drives it.
     moonpayCurrencyCode: 'usdc_base',
+    coinbaseNetwork: 'base',
+    coinbasePurchaseCurrency: 'USDC',
   },
 }
 
