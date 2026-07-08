@@ -49,6 +49,14 @@ export async function getRpcHealth(): Promise<RpcHealthResponse> {
   return fetchJson('/api/rpc-health');
 }
 
+/** Mint a single-use Coinbase onramp session token (server signs with the CDP secret). */
+export async function createCoinbaseOnrampSession(amount?: number): Promise<{ sessionToken: string }> {
+  return fetchJson('/api/onramp/coinbase/session', {
+    method: 'POST',
+    body: JSON.stringify(typeof amount === 'number' && amount > 0 ? { amount } : {}),
+  });
+}
+
 /** Raw channel row from the buyer proxy's local ChannelStore — no on-chain enrichment. */
 export interface RawChannel {
   channelId: string;

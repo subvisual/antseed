@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { resolveChainConfig } from '@antseed/node';
-import { registerRoutes, sanitizeOnramp, type OnrampConfig } from './routes.js';
+import { registerRoutes, sanitizeOnramp, type OnrampConfig, type CoinbaseCredentials } from './routes.js';
 import { loadCryptoContext, type CryptoContext, type PaymentCryptoConfig } from './crypto-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,9 +69,17 @@ export async function createServer(options: PaymentsServerOptions) {
     console.warn('[payments] Failed to load crypto context:', err instanceof Error ? err.message : String(err));
   }
 
+  // Coinbase onramp credentials come from env (never config.json / never
+  // /api/config), mirroring the identity key. Their presence is the sole enable
+  // signal; config.json contributes only the non-secret sandbox flag.
+  const coinbaseApiKeyId = process.env.ANTSEED_COINBASE_API_KEY_ID?.trim();
+  const coinbaseApiKeySecret = process.env.ANTSEED_COINBASE_API_KEY_SECRET?.trim();
+  const coinbaseEnabled = Boolean(coinbaseApiKeyId && coinbaseApiKeySecret);
+
   // Resolve chain config: protocol defaults + user overrides from config.json
   let userOverrides: Record<string, unknown> = {};
   let onrampConfig: OnrampConfig | null = null;
+  let coinbaseSandbox = false;
   let proxyPort = 8377;
   try {
     const cfgPath = options.dataDir
@@ -81,14 +89,23 @@ export async function createServer(options: PaymentsServerOptions) {
     const config = JSON.parse(raw) as Record<string, unknown>;
     const payments = (config.payments ?? {}) as Record<string, unknown>;
     userOverrides = (payments.crypto ?? {}) as Record<string, unknown>;
-    onrampConfig = sanitizeOnramp(payments.onramp);
+    onrampConfig = sanitizeOnramp(payments.onramp, { coinbaseEnabled });
+    coinbaseSandbox = onrampConfig?.coinbase?.sandbox ?? false;
     const buyer = (config.buyer ?? {}) as Record<string, unknown>;
     if (typeof buyer.proxyPort === 'number') {
       proxyPort = buyer.proxyPort;
     }
   } catch {
-    // No config file — use protocol defaults
+    // No config file — use protocol defaults. Coinbase still enables from env,
+    // defaulting to non-sandbox routing.
+    if (coinbaseEnabled) {
+      onrampConfig = sanitizeOnramp(undefined, { coinbaseEnabled });
+    }
   }
+
+  const coinbaseCreds: CoinbaseCredentials | null = coinbaseEnabled
+    ? { apiKeyId: coinbaseApiKeyId!, apiKeySecret: coinbaseApiKeySecret!, sandbox: coinbaseSandbox }
+    : null;
 
   const userRpcUrl = typeof userOverrides.rpcUrl === 'string' && userOverrides.rpcUrl.trim().length > 0
     ? (userOverrides.rpcUrl as string)
@@ -117,7 +134,7 @@ export async function createServer(options: PaymentsServerOptions) {
     usdcContractAddress: chainConfig.usdcContractAddress,
   };
 
-  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort, onramp: onrampConfig });
+  registerRoutes(fastify, { cryptoCtx, cryptoConfig, chainConfig, proxyPort, onramp: onrampConfig, coinbase: coinbaseCreds });
 
   // SPA fallback — only if static files are available
   if (staticRegistered) {

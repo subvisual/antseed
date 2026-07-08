@@ -44,6 +44,29 @@ antseed buyer start   # Start buying
 
 `~/.antseed/config.json` is the main source of truth for providers, services, pricing, categories, ports, and `baseUrl`. Environment variables are primarily for secrets such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTSEED_IDENTITY_HEX`.
 
+### Coinbase onramp (sandbox)
+
+The buyer deposit view can offer a Coinbase card/bank onramp. The CDP **Secret**
+API key is account-level, so it is read from the environment on the payments
+server and never written to `config.json` or exposed to the browser:
+
+```bash
+export ANTSEED_COINBASE_API_KEY_ID="organizations/{org}/apiKeys/{key}"
+export ANTSEED_COINBASE_API_KEY_SECRET="<base64 CDP secret>"
+```
+
+Their presence is the sole enable signal. `config.json` contributes only the
+non-secret routing flag:
+
+```json
+{ "payments": { "onramp": { "coinbase": { "sandbox": true } } } }
+```
+
+With `sandbox: true` the widget opens against `pay-sandbox.coinbase.com`
+(test funds). This local, per-desktop route is a **sandbox scaffold only** —
+production requires an AntSeed-hosted mint endpoint so the secret key never
+ships to user machines.
+
 ## Repository Structure
 
 ```

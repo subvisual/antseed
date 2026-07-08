@@ -7,7 +7,8 @@ import {
   useReadContract,
 } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
-import type { BalanceData, MoonPayOnrampConfig, PaymentConfig } from '../types';
+import type { BalanceData, CoinbaseOnrampConfig, MoonPayOnrampConfig, PaymentConfig } from '../types';
+import { createCoinbaseOnrampSession } from '../api';
 import { getErrorMessage, usePaymentNetwork } from '../payment-network';
 import { formatAmountInput, formatUsd, parseUsd, truncateAddress } from '../utils/format';
 import { getExplorerTxUrl } from '../utils/txLink';
@@ -77,13 +78,18 @@ const ERC20_ABI = [
 
 export function DepositView({ config, balance, buyerAddress, onDeposited }: DepositViewProps) {
   const moonpay = config?.onramp?.moonpay ?? null;
-  const [tab, setTab] = useState<'crypto' | 'card'>('crypto');
-  const cardEnabled = Boolean(moonpay);
-  const activeTab = cardEnabled ? tab : 'crypto';
+  const coinbase = config?.onramp?.coinbase?.enabled ? config.onramp.coinbase : null;
+  const [tab, setTab] = useState<'crypto' | 'card' | 'coinbase'>('crypto');
+  const hasOnramp = Boolean(moonpay || coinbase);
+  // Fall back to crypto if the selected onramp provider isn't enabled.
+  const activeTab =
+    tab === 'card' && moonpay ? 'card'
+      : tab === 'coinbase' && coinbase ? 'coinbase'
+        : 'crypto';
 
   return (
     <div className="dv">
-      {cardEnabled && (
+      {hasOnramp && (
         <div className="dv-chips" role="group" aria-label="Deposit method">
           <button
             type="button"
@@ -93,19 +99,33 @@ export function DepositView({ config, balance, buyerAddress, onDeposited }: Depo
           >
             Crypto
           </button>
-          <button
-            type="button"
-            aria-pressed={activeTab === 'card'}
-            className={`dv-chip${activeTab === 'card' ? ' dv-chip--active' : ''}`}
-            onClick={() => setTab('card')}
-          >
-            Card / Bank
-          </button>
+          {moonpay && (
+            <button
+              type="button"
+              aria-pressed={activeTab === 'card'}
+              className={`dv-chip${activeTab === 'card' ? ' dv-chip--active' : ''}`}
+              onClick={() => setTab('card')}
+            >
+              Card / Bank
+            </button>
+          )}
+          {coinbase && (
+            <button
+              type="button"
+              aria-pressed={activeTab === 'coinbase'}
+              className={`dv-chip${activeTab === 'coinbase' ? ' dv-chip--active' : ''}`}
+              onClick={() => setTab('coinbase')}
+            >
+              Coinbase
+            </button>
+          )}
         </div>
       )}
 
       {activeTab === 'card' && moonpay ? (
         <OnrampPanel moonpay={moonpay} evmAddress={config?.evmAddress ?? null} />
+      ) : activeTab === 'coinbase' && coinbase ? (
+        <CoinbasePanel coinbase={coinbase} evmAddress={config?.evmAddress ?? null} />
       ) : (
         <CryptoDeposit
           config={config}
@@ -218,6 +238,97 @@ function OnrampPanel({
         Paste your address into MoonPay → test USDC lands in your AntSeed wallet →
         your balance updates automatically once it's swept into your AntSeed balance.
         Sandbox only: uses fake money for this test.
+      </div>
+    </div>
+  );
+}
+
+function CoinbasePanel({
+  coinbase,
+  evmAddress,
+}: {
+  coinbase: CoinbaseOnrampConfig;
+  evmAddress: string | null;
+}) {
+  const hasAddress = Boolean(evmAddress);
+  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleContinue = useCallback(async () => {
+    if (!hasAddress) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const amt = Number(amount);
+      const { sessionToken } = await createCoinbaseOnrampSession(amt > 0 ? amt : undefined);
+      // Sandbox routes through the sandbox widget host; the session token itself
+      // is minted the same way. The destination address is baked into the token
+      // server-side (the identity wallet), so it isn't a URL param here.
+      const host = coinbase.sandbox ? 'https://pay-sandbox.coinbase.com' : 'https://pay.coinbase.com';
+      const url = new URL(`${host}/buy/select-asset`);
+      url.searchParams.set('sessionToken', sessionToken);
+      if (amt > 0) {
+        url.searchParams.set('presetFiatAmount', String(amt));
+        url.searchParams.set('fiatCurrency', 'USD');
+      }
+      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not start Coinbase. Please try again.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [amount, coinbase, hasAddress]);
+
+  return (
+    <div className="dv-form">
+      <div className="dv-amount-block">
+        <label className="dv-amount-label" htmlFor="dv-coinbase-amount">
+          Amount (optional)
+        </label>
+        <div className="dv-amount-field">
+          <span className="dv-amount-cur" aria-hidden="true">$</span>
+          <input
+            id="dv-coinbase-amount"
+            className="dv-amount-input"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            disabled={loading}
+          />
+          <span className="dv-amount-unit" aria-hidden="true">USD</span>
+        </div>
+      </div>
+
+      {!hasAddress && (
+        <div className="dv-connect-hint">
+          Your AntSeed wallet address is unavailable. Restart the payments server and try again.
+        </div>
+      )}
+
+      <button
+        className="dv-btn-primary"
+        onClick={handleContinue}
+        disabled={!hasAddress || loading}
+        aria-busy={loading}
+      >
+        {loading ? 'Starting Coinbase…' : 'Continue with Coinbase'}
+      </button>
+
+      {error && (
+        <div className="dv-error" role="alert">
+          <div className="dv-error-summary"><span>{error}</span></div>
+        </div>
+      )}
+
+      <div className="dv-help">
+        Pay with card or bank on Coinbase → USDC lands in your AntSeed wallet →
+        your balance updates automatically once it's swept into your AntSeed balance.
+        {coinbase.sandbox ? ' Sandbox only: uses fake money for this test.' : ''}
       </div>
     </div>
   );

@@ -11,6 +11,10 @@ This project uses selective package publishing. Each release entry lists the pub
 - `@antseed/cli`
 - `@antseed/node`
 
+### Added
+
+- Coinbase card/bank fiat onramp (sandbox) in the buyer deposit view, alongside the existing MoonPay option as a separate "Coinbase" tab. The payments server mints a single-use Coinbase session token server-side; the CDP secret key is read from `ANTSEED_COINBASE_API_KEY_ID` / `ANTSEED_COINBASE_API_KEY_SECRET` and never reaches the browser. `payments.onramp.coinbase.sandbox` selects the sandbox widget host.
+
 ### Removed
 
 - Removed the legacy subpool/subscription payment surface, including the `antseed buyer subscribe` command, subpool payment client/config exports, and the `AntseedSubPool` contract deployment path.

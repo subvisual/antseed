@@ -26,6 +26,12 @@ export interface MoonPayOnrampConfig {
   currencyCode: string;
 }
 
+export interface CoinbaseOnrampConfig {
+  enabled: boolean;
+  sandbox?: boolean;
+}
+
 export interface OnrampConfig {
   moonpay?: MoonPayOnrampConfig;
+  coinbase?: CoinbaseOnrampConfig;
 }
