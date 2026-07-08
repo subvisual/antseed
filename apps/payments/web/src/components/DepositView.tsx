@@ -268,7 +268,7 @@ function CoinbasePanel({
     if (win) win.opener = null;
     try {
       const amt = Number(amount);
-      const { sessionToken } = await createCoinbaseOnrampSession(amt > 0 ? amt : undefined);
+      const { sessionToken } = await createCoinbaseOnrampSession();
       // Sandbox routes through the sandbox widget host; the session token itself
       // is minted the same way. The destination address is baked into the token
       // server-side (the identity wallet), so it isn't a URL param here.
@@ -284,7 +284,7 @@ function CoinbasePanel({
       } else {
         // Placeholder tab was blocked (or unsupported); fall back to a direct
         // open, which will likely also be blocked outside the gesture window.
-        window.open(url.toString(), '_blank', 'noreferrer');
+        window.open(url.toString(), '_blank', 'noopener,noreferrer');
       }
     } catch (err) {
       win?.close();

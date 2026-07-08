@@ -122,6 +122,19 @@ describe('POST /api/onramp/coinbase/session', () => {
     expect(flat).not.toContain('apiKeys/k');
     await app.close();
   });
+
+  it('logs only the error name (never the message) for a non-OnrampMintError', async () => {
+    mintMock.mockRejectedValue(new Error('boom apiKeySecret=sk_leak_xyz'));
+    const app = Fastify();
+    const warn = vi.spyOn(app.log, 'warn').mockImplementation(() => app.log);
+    registerRoutes(app, ctx());
+    const res = await app.inject({ method: 'POST', url: '/api/onramp/coinbase/session', payload: {} });
+    expect(res.statusCode).toBe(502);
+    const logged = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('Error');
+    expect(logged).not.toContain('sk_leak_xyz');
+    await app.close();
+  });
 });
 
 describe('mintOnrampSession (pure)', () => {

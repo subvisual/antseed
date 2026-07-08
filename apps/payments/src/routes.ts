@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { CryptoContext, PaymentCryptoConfig } from './crypto-context.js';
-import { mintOnrampSession } from './coinbase-onramp.js';
+import { mintOnrampSession, OnrampMintError } from './coinbase-onramp.js';
 import {
   DepositsClient,
   EmissionsClient,
@@ -367,8 +367,10 @@ export function registerRoutes(fastify: FastifyInstance, ctx: RouteContext): voi
       });
       return { sessionToken };
     } catch (err) {
-      // Log server-side; return generic — never echo the raw CDP error/creds.
-      fastify.log.warn(`[onramp] Coinbase session mint failed: ${err instanceof Error ? err.message : String(err)}`);
+      // OnrampMintError messages are vetted (no creds); any other error is
+      // logged by name only, in case it carries key material.
+      const detail = err instanceof OnrampMintError ? err.message : err instanceof Error ? err.name : 'unknown error';
+      fastify.log.warn(`[onramp] Coinbase session mint failed: ${detail}`);
       return reply.status(502).send({ ok: false, error: 'Failed to create Coinbase session' });
     }
   });

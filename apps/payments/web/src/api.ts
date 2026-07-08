@@ -50,10 +50,10 @@ export async function getRpcHealth(): Promise<RpcHealthResponse> {
 }
 
 /** Mint a single-use Coinbase onramp session token (server signs with the CDP secret). */
-export async function createCoinbaseOnrampSession(amount?: number): Promise<{ sessionToken: string }> {
+export async function createCoinbaseOnrampSession(): Promise<{ sessionToken: string }> {
   return fetchJson('/api/onramp/coinbase/session', {
     method: 'POST',
-    body: JSON.stringify(typeof amount === 'number' && amount > 0 ? { amount } : {}),
+    body: '{}',
   });
 }
 
